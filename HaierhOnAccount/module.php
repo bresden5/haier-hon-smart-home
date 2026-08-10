@@ -207,7 +207,7 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function LoadLoginUrl(string $cookieFile): string
     {
-        $redirectUri = rawurlencode('hon://mobilesdk/detect/oauth/done');
+        $redirectUri = 'hon://mobilesdk/detect/oauth/done';
         $query = [
             'response_type' => 'token+id_token',
             'client_id' => $this->ReadPropertyString('ClientId'),
@@ -216,7 +216,7 @@ class HaierhOnAccount extends IPSModuleStrict
             'scope' => 'api openid refresh_token web',
             'nonce' => $this->CreateNonce()
         ];
-        $url = $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/services/oauth2/authorize/expid_Login', $query, false);
+        $url = $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/services/oauth2/authorize/expid_Login', $query);
         $response = $this->SafeGet($url, $cookieFile);
         $body = (string) $response['body'];
 
@@ -436,6 +436,7 @@ class HaierhOnAccount extends IPSModuleStrict
             throw new RuntimeException('The PHP cURL extension is required for hOn HTTP requests');
         }
 
+        $this->AssertHttpUrl($url);
         $curl = curl_init($url);
         if ($curl === false) {
             throw new RuntimeException('Could not initialize HTTP request');
@@ -480,7 +481,7 @@ class HaierhOnAccount extends IPSModuleStrict
         curl_close($curl);
 
         if ($responseBody === false) {
-            throw new RuntimeException('HTTP request failed: ' . $error);
+            throw new RuntimeException('HTTP request failed for ' . $this->DescribeUrl($url) . ': ' . $error);
         }
 
         return ['status' => $status, 'headers' => $responseHeaders, 'body' => $responseBody];
@@ -576,6 +577,27 @@ class HaierhOnAccount extends IPSModuleStrict
             return $url;
         }
         return rtrim($this->ReadPropertyString('AuthBase'), '/') . '/' . ltrim($url, '/');
+    }
+
+    private function AssertHttpUrl(string $url): void
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || !isset($parts['scheme'], $parts['host']) || !in_array($parts['scheme'], ['http', 'https'], true)) {
+            throw new RuntimeException('Invalid HTTP URL before request: ' . $this->DescribeUrl($url));
+        }
+    }
+
+    private function DescribeUrl(string $url): string
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts)) {
+            return '[unparseable URL]';
+        }
+
+        $scheme = (string) ($parts['scheme'] ?? 'no-scheme');
+        $host = (string) ($parts['host'] ?? 'no-host');
+        $path = (string) ($parts['path'] ?? '');
+        return $scheme . '://' . $host . $path;
     }
 
     private function IsHttpUrl(string $url): bool
