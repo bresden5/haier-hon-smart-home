@@ -26,7 +26,7 @@ Eine produktive Integration sollte sorgfaeltig mit Testgeraeten validiert werden
 5. Pro Appliance eine `Haier hOn Device` Instanz anlegen und `macAddress`, `applianceType`, `applianceModelId`, `code` sowie optional Firmware-/Serienfelder aus dem Appliance-JSON uebernehmen.
 6. Im Device `Status aktualisieren` und `Befehlsdefinitionen aktualisieren` testen.
 
-Hinweis: Der Login nutzt den aus pyhOn bekannten hOn/Salesforce-OAuth-Ablauf mit Cookies und Redirects. Die PHP-Umgebung von IP-Symcon muss dafuer cURL bereitstellen.
+Der primaere Login nutzt inzwischen den aus der aktuellen Home-Assistant-Integration `gvigroux/hon` abgeleiteten CIAM-PKCE-Ablauf ueber `https://api-iot.he.services/ciam/authorize` und `/ciam/token`. Der alte hOn/Salesforce-OAuth-Ablauf bleibt nur als Fallback erhalten. Die PHP-Umgebung von IP-Symcon muss dafuer cURL bereitstellen.
 
 Konten, die in der hOn-App ueber Google, Apple oder Facebook angelegt wurden, muessen nach Herstellerhinweis auch wieder ueber diese Methode angemeldet werden. Das Modul unterstuetzt aktuell den hOn E-Mail/Passwort-Login und vorhandene Refresh-Tokens, aber keinen interaktiven Google-/Social-/Captcha-Login.
 

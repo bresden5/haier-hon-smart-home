@@ -201,7 +201,7 @@ class HaierhOnDevice extends IPSModuleStrict
             'applianceModelId' => $this->ReadPropertyString('ApplianceModelId'),
             'macAddress' => $this->ReadPropertyString('MacAddress'),
             'os' => 'android',
-            'appVersion' => '2.0.10',
+            'appVersion' => '2.27.9',
             'code' => $this->ReadPropertyString('Code'),
             'firmwareId' => $this->ReadPropertyString('FirmwareId'),
             'fwVersion' => $this->ReadPropertyString('FwVersion'),

@@ -5,7 +5,7 @@ declare(strict_types=1);
 class HaierhOnAccount extends IPSModuleStrict
 {
     private const CHILD_TO_PARENT = '{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}';
-    private const AUTH_EXPIRE_WARNING_SECONDS = 7 * 60 * 60;
+    private const AUTH_EXPIRE_WARNING_SECONDS = 600;
 
     public function Create(): void
     {
@@ -16,7 +16,7 @@ class HaierhOnAccount extends IPSModuleStrict
         $this->RegisterPropertyString('InitialRefreshToken', '');
         $this->RegisterPropertyString('ManualOAuthCallbackUrl', '');
         $this->RegisterPropertyInteger('Timeout', 30);
-        $this->RegisterPropertyString('AppVersion', '2.0.10');
+        $this->RegisterPropertyString('AppVersion', '2.27.9');
         $this->RegisterPropertyString('ClientId', '3MVG9QDx8IX8nP5T2Ha8ofvlmjLZl5L_gvfbT9.HJvpHGKoAS_dcMN8LYpTSYeVFCraUnV.2Ag1Ki7m4znVO6');
         $this->RegisterPropertyString('ApiBase', 'https://api-iot.he.services');
         $this->RegisterPropertyString('AuthBase', 'https://account2.hon-smarthome.com');
@@ -82,7 +82,9 @@ class HaierhOnAccount extends IPSModuleStrict
                 }
             }
 
-            $this->AuthenticateWithPassword();
+            if (!$this->AuthenticateWithCiam()) {
+                $this->AuthenticateWithPassword();
+            }
             $this->SetStatus(102);
             return true;
         } catch (Throwable $exception) {
@@ -119,11 +121,28 @@ class HaierhOnAccount extends IPSModuleStrict
     public function RefreshAppliances(): string
     {
         try {
-            $response = $this->ApiRequest('GET', '/commands/v1/appliance');
-            $appliances = $response['payload']['appliances'] ?? [];
+            $response = $this->ApiRequest('POST', '/unified-api/v1/view/appliance-list', [], ['deviceId' => 'ipsymcon']);
+            $appliances = $response['modules']['applianceList']['payload']['appliances'] ?? null;
+            if (!is_array($appliances)) {
+                $response = $this->ApiRequest('GET', '/commands/v1/appliance');
+                $appliances = $response['payload']['appliances'] ?? [];
+            }
             if (!is_array($appliances)) {
                 throw new RuntimeException('Appliance response does not contain a valid appliance list');
             }
+
+            $appliances = array_values(array_map(
+                static function (array $appliance): array {
+                    if (!isset($appliance['applianceType']) && isset($appliance['applianceTypeId'])) {
+                        $appliance['applianceType'] = (string) $appliance['applianceTypeId'];
+                    }
+                    if (!isset($appliance['firmwareId']) && isset($appliance['eepromId'])) {
+                        $appliance['firmwareId'] = (string) $appliance['eepromId'];
+                    }
+                    return $appliance;
+                },
+                array_filter($appliances, static fn ($appliance): bool => is_array($appliance))
+            ));
 
             $json = json_encode($appliances, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             $this->WriteAttributeString('AppliancesJson', $json === false ? '[]' : $json);
@@ -203,6 +222,65 @@ class HaierhOnAccount extends IPSModuleStrict
         $this->WriteAttributeString('AccessToken', (string) ($data['access_token'] ?? ''));
         $this->WriteAttributeString('IdToken', (string) ($data['id_token'] ?? ''));
         return $this->LoginToApi();
+    }
+
+    private function AuthenticateWithCiam(): bool
+    {
+        if ($this->ReadPropertyString('Email') === '' || $this->ReadPropertyString('Password') === '') {
+            return false;
+        }
+
+        $codeVerifier = $this->CreatePkceVerifier();
+        $codeChallenge = $this->CreatePkceChallenge($codeVerifier);
+        $authorizeResponse = $this->HttpRequest('GET', $this->BuildUrl($this->ReadPropertyString('ApiBase'), '/ciam/authorize', [
+            'username' => $this->ReadPropertyString('Email'),
+            'password' => $this->ReadPropertyString('Password'),
+            'code_challenge' => $codeChallenge
+        ]), [
+            'user-agent: ' . $this->ReadPropertyString('UserAgent')
+        ]);
+
+        if ($authorizeResponse['status'] < 200 || $authorizeResponse['status'] >= 300) {
+            $this->SendDebug('CIAM authorize', 'HTTP ' . $authorizeResponse['status'], 0);
+            return false;
+        }
+
+        $authorizeData = $this->DecodeJson((string) $authorizeResponse['body'], 'hOn CIAM authorize response');
+        $sessionId = (string) ($authorizeData['session_id'] ?? '');
+        if ($sessionId === '') {
+            $this->SendDebug('CIAM authorize', 'No session_id in response', 0);
+            return false;
+        }
+
+        $tokenResponse = $this->HttpRequest('POST', $this->BuildUrl($this->ReadPropertyString('ApiBase'), '/ciam/token'), [
+            'Content-Type: application/json',
+            'user-agent: ' . $this->ReadPropertyString('UserAgent')
+        ], [
+            'session_id' => $sessionId,
+            'code_verifier' => $codeVerifier
+        ]);
+
+        if ($tokenResponse['status'] < 200 || $tokenResponse['status'] >= 300) {
+            $this->SendDebug('CIAM token', 'HTTP ' . $tokenResponse['status'], 0);
+            return false;
+        }
+
+        $tokenData = $this->DecodeJson((string) $tokenResponse['body'], 'hOn CIAM token response');
+        $tokens = is_array($tokenData['tokens'] ?? null) ? $tokenData['tokens'] : [];
+        $idToken = (string) ($tokens['id_token'] ?? '');
+        $cognitoToken = (string) ($tokens['cognito_token'] ?? '');
+        if ($idToken === '' || $cognitoToken === '') {
+            $this->SendDebug('CIAM token', 'Required tokens missing', 0);
+            return false;
+        }
+
+        $this->WriteAttributeString('AccessToken', (string) ($tokens['access_token'] ?? ''));
+        $this->WriteAttributeString('IdToken', $idToken);
+        $this->WriteAttributeString('CognitoToken', $cognitoToken);
+        $this->WriteAttributeString('RefreshToken', (string) ($tokens['refresh_token'] ?? $this->ReadAttributeString('RefreshToken')));
+        $this->WriteAttributeInteger('TokenTimestamp', time());
+        $this->WriteAttributeString('LastError', '');
+        return true;
     }
 
     private function AuthenticateWithPassword(): void
@@ -1054,6 +1132,16 @@ class HaierhOnAccount extends IPSModuleStrict
     {
         $hex = bin2hex(random_bytes(16));
         return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4) . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20);
+    }
+
+    private function CreatePkceVerifier(): string
+    {
+        return rtrim(strtr(base64_encode(random_bytes(64)), '+/', '-_'), '=');
+    }
+
+    private function CreatePkceChallenge(string $codeVerifier): string
+    {
+        return rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
     }
 
     private function CreateMobileId(): string
