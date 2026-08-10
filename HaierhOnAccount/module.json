@@ -8,9 +8,7 @@
   ],
   "url": "https://hon-smarthome.com/",
   "parentRequirements": [],
-  "childRequirements": [
-    "{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}"
-  ],
+  "childRequirements": [],
   "implemented": [
     "{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}"
   ],
