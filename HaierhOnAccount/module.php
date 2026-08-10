@@ -441,6 +441,10 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         $body = (string) $response['body'];
+        if ($this->IsGoogleLoginPage($body)) {
+            throw new RuntimeException('hOn redirected to Google sign-in. This module can only use hOn e-mail/password login or an existing refresh token; Google/social login requires an interactive browser flow.');
+        }
+
         if ($this->ParseTokenUrl($body)) {
             return;
         }
@@ -457,6 +461,10 @@ class HaierhOnAccount extends IPSModuleStrict
                 throw new RuntimeException('Progressive login returned HTTP ' . $progressive['status']);
             }
 
+            if ($this->IsGoogleLoginPage((string) $progressive['body'])) {
+                throw new RuntimeException('hOn redirected to Google sign-in. This module can only use hOn e-mail/password login or an existing refresh token; Google/social login requires an interactive browser flow.');
+            }
+
             $progressiveUrl = (string) ($progressive['url'] ?? $nextUrl);
             $nextUrl = $this->FindOAuthUrl((string) $progressive['body']);
             if ($nextUrl === '') {
@@ -468,6 +476,10 @@ class HaierhOnAccount extends IPSModuleStrict
         $tokenResponse = $this->SafeGet($nextUrl, $cookieFile);
         if ($tokenResponse['status'] < 200 || $tokenResponse['status'] >= 300) {
             throw new RuntimeException('OAuth token page returned HTTP ' . $tokenResponse['status'] . ' for ' . $this->DescribeUrl($nextUrl));
+        }
+
+        if ($this->IsGoogleLoginPage((string) $tokenResponse['body'])) {
+            throw new RuntimeException('hOn redirected to Google sign-in. This module can only use hOn e-mail/password login or an existing refresh token; Google/social login requires an interactive browser flow.');
         }
 
         if (!$this->ParseTokenUrl((string) $tokenResponse['body'])) {
@@ -910,6 +922,15 @@ class HaierhOnAccount extends IPSModuleStrict
             || str_contains($href, 'account2.hon-smarthome.com/services/oauth2')
             || str_starts_with($href, '/services/oauth2/')
             || str_starts_with($href, 'services/oauth2/');
+    }
+
+    private function IsGoogleLoginPage(string $html): bool
+    {
+        $lowerHtml = strtolower($html);
+        $hasGoogleTitle = str_contains($lowerHtml, 'sign in - google accounts')
+            || (str_contains($lowerHtml, 'anmelden') && str_contains($lowerHtml, 'google konten'));
+        $hasGoogleEndpoint = str_contains($lowerHtml, 'accounts.google.com') || str_contains($lowerHtml, '/v3/signin/identifier');
+        return $hasGoogleTitle && $hasGoogleEndpoint;
     }
 
     private function ResolveUrl(string $url, string $baseUrl): string

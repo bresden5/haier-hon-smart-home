@@ -28,6 +28,8 @@ Eine produktive Integration sollte sorgfaeltig mit Testgeraeten validiert werden
 
 Hinweis: Der Login nutzt den aus pyhOn bekannten hOn/Salesforce-OAuth-Ablauf mit Cookies und Redirects. Die PHP-Umgebung von IP-Symcon muss dafuer cURL bereitstellen.
 
+Konten, die in der hOn-App ueber Google, Apple oder Facebook angelegt wurden, muessen nach Herstellerhinweis auch wieder ueber diese Methode angemeldet werden. Das Modul unterstuetzt aktuell den hOn E-Mail/Passwort-Login und vorhandene Refresh-Tokens, aber keinen interaktiven Google-/Social-/Captcha-Login.
+
 ## Sicherheit
 
 Keine Zugangsdaten, Tokens, Cookies oder Geraete-IDs in dieses Repository committen. Steuerbefehle an Haushaltsgeraete sollten nur nach klarer Nutzeraktion oder expliziter Automationsregel ausgefuehrt werden.
