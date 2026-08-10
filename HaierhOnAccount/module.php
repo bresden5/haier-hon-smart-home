@@ -374,7 +374,8 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         $action = (string) ($form['action'] ?? '/NewhOnLogin');
-        $response = $this->HttpRequest('POST', $this->NormalizeAuthUrl($action), [
+        $actionUrl = $this->ResolveUrl($action, $loginUrl);
+        $response = $this->HttpRequest('POST', $actionUrl, [
             'Content-Type: application/x-www-form-urlencoded',
             'user-agent: ' . $this->ReadPropertyString('UserAgent'),
             'referer: ' . $this->NormalizeAuthUrl($loginUrl)
@@ -389,7 +390,7 @@ class HaierhOnAccount extends IPSModuleStrict
             if ($this->ParseTokenUrl($location)) {
                 return '';
             }
-            return $location;
+            return $this->ResolveUrl($location, $actionUrl);
         }
 
         $body = (string) $response['body'];
@@ -398,16 +399,12 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         if (preg_match('/(?:location(?:\.href)?\s*=|location\.replace\()\s*["\'](.+?)["\']/', $body, $matches) === 1) {
-            return html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5);
+            return $this->ResolveUrl(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), $actionUrl);
         }
 
-        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $body, $matches) > 0) {
-            foreach ($matches[1] as $href) {
-                $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5);
-                if (str_contains($href, 'oauth') || str_contains($href, 'RemoteAccessAuthorizationPage') || str_contains($href, 'hOnRedirect')) {
-                    return $href;
-                }
-            }
+        $href = $this->FindOAuthHref($body);
+        if ($href !== '') {
+            return $this->ResolveUrl($href, $actionUrl);
         }
 
         throw new RuntimeException('New hOn login form did not return an OAuth redirect; ' . $this->DescribeHtmlForDebug($body));
@@ -425,13 +422,14 @@ class HaierhOnAccount extends IPSModuleStrict
                 throw new RuntimeException('OAuth redirect returned an unsupported URL scheme');
             }
 
-            $response = $this->HttpRequest('GET', $this->NormalizeAuthUrl($currentUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+            $requestUrl = $this->NormalizeAuthUrl($currentUrl);
+            $response = $this->HttpRequest('GET', $requestUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
             $location = (string) ($response['headers']['location'] ?? '');
             if ($location !== '') {
                 if ($this->ParseTokenUrl($location)) {
                     return;
                 }
-                $currentUrl = $location;
+                $currentUrl = $this->ResolveUrl($location, $requestUrl);
                 continue;
             }
 
@@ -447,26 +445,29 @@ class HaierhOnAccount extends IPSModuleStrict
             return;
         }
 
-        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $body, $matches) === 0 || $matches[1] === []) {
+        $nextUrl = $this->FindOAuthHref($body);
+        if ($nextUrl === '') {
             throw new RuntimeException('OAuth redirect did not contain a token link');
         }
 
-        $nextUrl = html_entity_decode($matches[1][0], ENT_QUOTES | ENT_HTML5);
+        $nextUrl = $this->ResolveUrl($nextUrl, $requestUrl);
         if (str_contains($nextUrl, 'ProgressiveLogin')) {
             $progressive = $this->SafeGet($nextUrl, $cookieFile);
             if ($progressive['status'] < 200 || $progressive['status'] >= 300) {
                 throw new RuntimeException('Progressive login returned HTTP ' . $progressive['status']);
             }
 
-            if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', (string) $progressive['body'], $progressiveMatches) === 0 || $progressiveMatches[1] === []) {
+            $progressiveUrl = (string) ($progressive['url'] ?? $nextUrl);
+            $nextUrl = $this->FindOAuthHref((string) $progressive['body']);
+            if ($nextUrl === '') {
                 throw new RuntimeException('Progressive login did not contain a token link');
             }
-            $nextUrl = html_entity_decode($progressiveMatches[1][0], ENT_QUOTES | ENT_HTML5);
+            $nextUrl = $this->ResolveUrl($nextUrl, $progressiveUrl);
         }
 
         $tokenResponse = $this->SafeGet($nextUrl, $cookieFile);
         if ($tokenResponse['status'] < 200 || $tokenResponse['status'] >= 300) {
-            throw new RuntimeException('OAuth token page returned HTTP ' . $tokenResponse['status']);
+            throw new RuntimeException('OAuth token page returned HTTP ' . $tokenResponse['status'] . ' for ' . $this->DescribeUrl($nextUrl));
         }
 
         if (!$this->ParseTokenUrl((string) $tokenResponse['body'])) {
@@ -807,6 +808,52 @@ class HaierhOnAccount extends IPSModuleStrict
             return $url;
         }
         return rtrim($this->ReadPropertyString('AuthBase'), '/') . '/' . ltrim($url, '/');
+    }
+
+    private function FindOAuthHref(string $html): string
+    {
+        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $html, $matches) === 0 || $matches[1] === []) {
+            return '';
+        }
+
+        $fallback = '';
+        foreach ($matches[1] as $href) {
+            $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5);
+            $lowerHref = strtolower($href);
+            if (str_contains($lowerHref, 'oauth/done') || str_contains($lowerHref, 'access_token=') || str_contains($lowerHref, 'id_token=')) {
+                return $href;
+            }
+            if (str_contains($href, 'ProgressiveLogin')) {
+                return $href;
+            }
+            if ($fallback === '' && (str_contains($href, 'RemoteAccessAuthorizationPage') || str_contains($href, 'hOnRedirect') || str_contains($lowerHref, 'oauth'))) {
+                $fallback = $href;
+            }
+        }
+
+        return $fallback;
+    }
+
+    private function ResolveUrl(string $url, string $baseUrl): string
+    {
+        $url = trim(html_entity_decode($url, ENT_QUOTES | ENT_HTML5));
+        if ($url === '' || $this->IsHttpUrl($url) || str_starts_with($url, 'hon://')) {
+            return $url;
+        }
+
+        $base = parse_url($this->NormalizeAuthUrl($baseUrl));
+        if (!is_array($base) || !isset($base['scheme'], $base['host'])) {
+            return $this->NormalizeAuthUrl($url);
+        }
+
+        $origin = $base['scheme'] . '://' . $base['host'] . (isset($base['port']) ? ':' . $base['port'] : '');
+        if (str_starts_with($url, '/')) {
+            return $origin . $url;
+        }
+
+        $basePath = (string) ($base['path'] ?? '/');
+        $directory = preg_replace('#/[^/]*$#', '/', $basePath) ?? '/';
+        return $origin . $directory . $url;
     }
 
     private function AssertHttpUrl(string $url): void
