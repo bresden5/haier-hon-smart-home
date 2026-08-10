@@ -59,6 +59,12 @@ class HaierhOnDevice extends IPSModuleStrict
         ], JSON_UNESCAPED_SLASHES);
     }
 
+    public function ReceiveData(string $JSONString): string
+    {
+        $this->SendDebug('ReceiveData', $JSONString, 0);
+        return '';
+    }
+
     public function RefreshState(): bool
     {
         try {
