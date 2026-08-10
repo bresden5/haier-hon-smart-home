@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 class HaierhOnAccount extends IPSModuleStrict
 {
+    private const ACCOUNT_MODULE = '{48231829-1346-480B-A48E-13FAB565F458}';
     private const CHILD_TO_PARENT = '{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}';
     private const DEVICE_MODULE = '{045FBB47-CDFA-4359-A981-394A954647AD}';
     private const AUTH_EXPIRE_WARNING_SECONDS = 600;
@@ -283,20 +284,26 @@ class HaierhOnAccount extends IPSModuleStrict
                 'code' => $code,
                 'instanceID' => $this->FindDeviceInstance($macAddress),
                 'create' => [
-                    'moduleID' => self::DEVICE_MODULE,
-                    'configuration' => [
-                        'DisplayName' => $name,
-                        'MacAddress' => $macAddress,
-                        'ApplianceType' => $type,
-                        'ApplianceModelId' => $modelId,
-                        'Code' => $code,
-                        'FirmwareId' => $firmwareId,
-                        'FwVersion' => $fwVersion,
-                        'Series' => $series,
-                        'PollInterval' => 120
+                    [
+                        'moduleID' => self::DEVICE_MODULE,
+                        'configuration' => [
+                            'DisplayName' => $name,
+                            'MacAddress' => $macAddress,
+                            'ApplianceType' => $type,
+                            'ApplianceModelId' => $modelId,
+                            'Code' => $code,
+                            'FirmwareId' => $firmwareId,
+                            'FwVersion' => $fwVersion,
+                            'Series' => $series,
+                            'PollInterval' => 120
+                        ],
+                        'location' => $this->ReadDeviceLocationParts(),
+                        'name' => $name
                     ],
-                    'location' => $this->ReadDeviceLocationParts(),
-                    'name' => $name
+                    [
+                        'moduleID' => self::ACCOUNT_MODULE,
+                        'configuration' => new stdClass()
+                    ]
                 ]
             ];
         }
