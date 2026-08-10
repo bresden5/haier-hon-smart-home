@@ -5,6 +5,7 @@ declare(strict_types=1);
 class HaierhOnAccount extends IPSModuleStrict
 {
     private const CHILD_TO_PARENT = '{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}';
+    private const DEVICE_MODULE = '{045FBB47-CDFA-4359-A981-394A954647AD}';
     private const AUTH_EXPIRE_WARNING_SECONDS = 600;
 
     public function Create(): void
@@ -15,6 +16,7 @@ class HaierhOnAccount extends IPSModuleStrict
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('InitialRefreshToken', '');
         $this->RegisterPropertyString('ManualOAuthCallbackUrl', '');
+        $this->RegisterPropertyString('DeviceLocation', 'Haier hOn');
         $this->RegisterPropertyInteger('Timeout', 30);
         $this->RegisterPropertyString('AppVersion', '2.27.9');
         $this->RegisterPropertyString('ClientId', '3MVG9QDx8IX8nP5T2Ha8ofvlmjLZl5L_gvfbT9.HJvpHGKoAS_dcMN8LYpTSYeVFCraUnV.2Ag1Ki7m4znVO6');
@@ -45,6 +47,24 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         $this->SetStatus(102);
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
+        if (!is_array($form)) {
+            return '{}';
+        }
+
+        foreach ($form['actions'] as &$action) {
+            if (($action['name'] ?? '') === 'ApplianceConfigurator') {
+                $action['values'] = $this->BuildConfiguratorValues();
+                break;
+            }
+        }
+        unset($action);
+
+        return json_encode($form, JSON_UNESCAPED_SLASHES) ?: '{}';
     }
 
     public function ForwardData(string $JSONString): string
@@ -168,6 +188,7 @@ class HaierhOnAccount extends IPSModuleStrict
 
             $json = json_encode($appliances, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             $this->WriteAttributeString('AppliancesJson', $json === false ? '[]' : $json);
+            $this->UpdateConfigurator();
             $this->SetStatus(102);
             return $this->ReadAttributeString('AppliancesJson');
         } catch (Throwable $exception) {
@@ -179,6 +200,11 @@ class HaierhOnAccount extends IPSModuleStrict
     public function GetAppliancesJson(): string
     {
         return $this->ReadAttributeString('AppliancesJson');
+    }
+
+    public function UpdateConfigurator(): void
+    {
+        $this->UpdateFormField('ApplianceConfigurator', 'values', json_encode($this->BuildConfiguratorValues(), JSON_UNESCAPED_SLASHES) ?: '[]');
     }
 
     public function GetLastError(): string
@@ -221,6 +247,103 @@ class HaierhOnAccount extends IPSModuleStrict
         if (!$this->Login()) {
             throw new RuntimeException('Authentication failed');
         }
+    }
+
+    private function BuildConfiguratorValues(): array
+    {
+        $appliances = json_decode($this->ReadAttributeString('AppliancesJson'), true);
+        if (!is_array($appliances)) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($appliances as $appliance) {
+            if (!is_array($appliance)) {
+                continue;
+            }
+
+            $macAddress = (string) ($appliance['macAddress'] ?? '');
+            if ($macAddress === '') {
+                continue;
+            }
+
+            $name = $this->BuildApplianceDisplayName($appliance, $macAddress);
+            $type = (string) ($appliance['applianceTypeName'] ?? $appliance['applianceType'] ?? '');
+            $modelId = (string) ($appliance['applianceModelId'] ?? $appliance['id'] ?? '');
+            $code = (string) ($appliance['code'] ?? '');
+            $firmwareId = (string) ($appliance['firmwareId'] ?? $appliance['eepromId'] ?? '');
+            $fwVersion = (string) ($appliance['fwVersion'] ?? '');
+            $series = (string) ($appliance['series'] ?? '');
+
+            $values[] = [
+                'name' => $name,
+                'address' => $macAddress,
+                'type' => $type,
+                'model' => (string) ($appliance['modelName'] ?? $modelId),
+                'code' => $code,
+                'instanceID' => $this->FindDeviceInstance($macAddress),
+                'create' => [
+                    'moduleID' => self::DEVICE_MODULE,
+                    'configuration' => [
+                        'DisplayName' => $name,
+                        'MacAddress' => $macAddress,
+                        'ApplianceType' => $type,
+                        'ApplianceModelId' => $modelId,
+                        'Code' => $code,
+                        'FirmwareId' => $firmwareId,
+                        'FwVersion' => $fwVersion,
+                        'Series' => $series,
+                        'PollInterval' => 120
+                    ],
+                    'location' => $this->ReadDeviceLocationParts(),
+                    'name' => $name
+                ]
+            ];
+        }
+
+        return $values;
+    }
+
+    private function BuildApplianceDisplayName(array $appliance, string $fallback): string
+    {
+        foreach (['nickName', 'modelName', 'code'] as $field) {
+            $value = trim((string) ($appliance[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return $fallback;
+    }
+
+    private function ReadDeviceLocationParts(): array
+    {
+        $path = trim($this->ReadPropertyString('DeviceLocation'));
+        if ($path === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[\\\\\/>]+/', $path);
+        if (!is_array($parts)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn (string $part): string => trim($part), $parts),
+            static fn (string $part): bool => $part !== ''
+        ));
+    }
+
+    private function FindDeviceInstance(string $macAddress): int
+    {
+        foreach (IPS_GetInstanceListByModuleID(self::DEVICE_MODULE) as $instanceId) {
+            $configuration = json_decode(IPS_GetConfiguration((int) $instanceId), true);
+            if (is_array($configuration) && ((string) ($configuration['MacAddress'] ?? '')) === $macAddress) {
+                return (int) $instanceId;
+            }
+        }
+
+        return 0;
     }
 
     private function RefreshTokens(): bool

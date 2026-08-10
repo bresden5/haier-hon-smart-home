@@ -21,6 +21,11 @@
       "caption": "OAuth callback URL"
     },
     {
+      "type": "ValidationTextBox",
+      "name": "DeviceLocation",
+      "caption": "Device path"
+    },
+    {
       "type": "NumberSpinner",
       "name": "Timeout",
       "caption": "HTTP timeout",
@@ -73,11 +78,42 @@
     {
       "type": "Button",
       "caption": "Load appliances",
-      "onClick": "HHONA_RefreshAppliances($id);"
+      "onClick": "HHONA_RefreshAppliances($id); HHONA_UpdateConfigurator($id);"
     },
     {
-      "type": "Label",
-      "caption": "Create one Haier hOn Device instance per appliance and copy macAddress, applianceType, applianceModelId and code from the appliance JSON."
+      "type": "Configurator",
+      "name": "ApplianceConfigurator",
+      "caption": "Loaded appliances",
+      "rowCount": 8,
+      "delete": false,
+      "columns": [
+        {
+          "caption": "Name",
+          "name": "name",
+          "width": "220px"
+        },
+        {
+          "caption": "MAC address",
+          "name": "address",
+          "width": "170px"
+        },
+        {
+          "caption": "Type",
+          "name": "type",
+          "width": "80px"
+        },
+        {
+          "caption": "Model",
+          "name": "model",
+          "width": "180px"
+        },
+        {
+          "caption": "Code",
+          "name": "code",
+          "width": "140px"
+        }
+      ],
+      "values": []
     }
   ],
   "status": [
