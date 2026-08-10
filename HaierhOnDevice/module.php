@@ -23,6 +23,7 @@ class HaierhOnDevice extends IPSModuleStrict
 
         $this->RegisterAttributeString('LastCommandsJson', '{}');
         $this->RegisterAttributeString('LastContextJson', '{}');
+        $this->RegisterAttributeString('ProgramCodeMapJson', '{}');
         $this->RegisterAttributeString('LastError', '');
 
         $this->RegisterTimer('RefreshState', 0, 'HHOND_RefreshState($_IPS[\'TARGET\']);');
@@ -97,6 +98,7 @@ class HaierhOnDevice extends IPSModuleStrict
             $commands = $this->RequestParent('GET', '/commands/v1/retrieve', $this->BuildDeviceQuery());
             $this->DebugJson('Command definitions response', $commands);
             $this->WriteAttributeString('LastCommandsJson', json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
+            $this->WriteAttributeString('ProgramCodeMapJson', json_encode($this->BuildProgramCodeMap($commands), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
             $this->WriteAttributeString('LastError', '');
             $this->SetStatus(102);
             return true;
@@ -298,14 +300,14 @@ class HaierhOnDevice extends IPSModuleStrict
         $flat = $this->Flatten($context);
         $parameters = $this->ExtractShadowParameters($context);
 
-        $this->SetStringIfAvailable('MachineStatus', $flat, ['payload.attributes.machMode', 'attributes.machMode', 'machMode'], $parameters['machMode'] ?? null);
-        $this->SetStringIfAvailable('ProgramName', $flat, ['payload.attributes.programName', 'attributes.programName', 'programName'], $parameters['programName'] ?? $parameters['prCode'] ?? null);
-        $this->SetStringIfAvailable('ProgramPhase', $flat, ['payload.attributes.prPhase', 'attributes.prPhase', 'prPhase'], $parameters['prPhase'] ?? null);
+        $this->SetStringIfAvailable('MachineStatus', $flat, ['payload.attributes.machMode', 'attributes.machMode', 'machMode'], $this->TranslateMachineStatus($parameters['machMode'] ?? null));
+        $this->SetStringIfAvailable('ProgramName', $flat, ['payload.attributes.programName', 'attributes.programName', 'programName'], $this->TranslateProgramCode($parameters['prCode'] ?? null));
+        $this->SetStringIfAvailable('ProgramPhase', $flat, ['payload.attributes.prPhase', 'attributes.prPhase', 'prPhase'], $this->TranslateProgramPhase($parameters['prPhase'] ?? null));
         $this->SetIntegerIfAvailable('RemainingTime', $flat, ['payload.attributes.remainingTimeMM', 'attributes.remainingTimeMM', 'remainingTimeMM'], $parameters['remainingTimeMM'] ?? null);
         $this->SetIntegerIfAvailable('RemainingMainWashTime', $flat, ['payload.attributes.remainingMainWashTime', 'attributes.remainingMainWashTime', 'remainingMainWashTime'], $parameters['remainingMainWashTime'] ?? null);
-        $this->SetStringIfAvailable('DoorStatus', $flat, ['payload.attributes.doorStatus', 'attributes.doorStatus', 'doorStatus'], $parameters['doorStatus'] ?? null);
-        $this->SetStringIfAvailable('DoorLockStatus', $flat, ['payload.attributes.doorLockStatus', 'attributes.doorLockStatus', 'doorLockStatus'], $parameters['doorLockStatus'] ?? null);
-        $this->SetStringIfAvailable('ErrorState', $flat, ['payload.attributes.errors', 'attributes.errors', 'errors'], $parameters['errors'] ?? null);
+        $this->SetStringIfAvailable('DoorStatus', $flat, ['payload.attributes.doorStatus', 'attributes.doorStatus', 'doorStatus'], $this->TranslateBinaryCode($parameters['doorStatus'] ?? null, 'Geschlossen', 'Offen'));
+        $this->SetStringIfAvailable('DoorLockStatus', $flat, ['payload.attributes.doorLockStatus', 'attributes.doorLockStatus', 'doorLockStatus'], $this->TranslateBinaryCode($parameters['doorLockStatus'] ?? null, 'Verriegelt', 'Entriegelt'));
+        $this->SetStringIfAvailable('ErrorState', $flat, ['payload.attributes.errors', 'attributes.errors', 'errors'], $this->TranslateErrorState($parameters['errors'] ?? null));
         $this->SetBooleanIfAvailable('RemoteControl', $flat, ['payload.attributes.remoteCtrValid', 'attributes.remoteCtrValid', 'remoteCtrValid'], $parameters['remoteCtrValid'] ?? null);
         $this->SetBooleanIfAvailable('Paused', $flat, ['payload.attributes.pause', 'attributes.pause', 'pause'], $parameters['pause'] ?? null);
         $this->SetIntegerIfAvailable('Temperature', $flat, ['payload.attributes.temp', 'attributes.temp', 'temp'], $parameters['temp'] ?? null);
@@ -316,7 +318,148 @@ class HaierhOnDevice extends IPSModuleStrict
         $this->SetFloatIfAvailable('TotalElectricityUsed', $flat, ['payload.attributes.totalElectricityUsed', 'attributes.totalElectricityUsed', 'totalElectricityUsed'], $parameters['totalElectricityUsed'] ?? null);
         $this->SetIntegerIfAvailable('CurrentWashCycle', $flat, ['payload.attributes.currentWashCycle', 'attributes.currentWashCycle', 'currentWashCycle'], $parameters['currentWashCycle'] ?? null);
         $this->SetIntegerIfAvailable('TotalWashCycle', $flat, ['payload.attributes.totalWashCycle', 'attributes.totalWashCycle', 'totalWashCycle'], $parameters['totalWashCycle'] ?? null);
-        $this->SetStringIfAvailable('ConnectionStatus', $flat, ['payload.lastConnEvent.category', 'lastConnEvent.category']);
+        $this->SetStringIfAvailable('ConnectionStatus', $flat, ['payload.lastConnEvent.category', 'lastConnEvent.category'], $this->TranslateConnectionStatus($flat['payload.lastConnEvent.category'] ?? $flat['lastConnEvent.category'] ?? null));
+    }
+
+    private function BuildProgramCodeMap(array $commands): array
+    {
+        $programs = $commands['payload']['startProgram'] ?? [];
+        if (!is_array($programs)) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($programs as $programName => $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $code = $definition['parameters']['prCode']['fixedValue'] ?? null;
+            if ($code === null || (string) $code === '') {
+                continue;
+            }
+
+            $map[(string) $code] = $this->FormatProgramName((string) $programName);
+        }
+
+        ksort($map, SORT_NATURAL);
+        return $map;
+    }
+
+    private function FormatProgramName(string $programName): string
+    {
+        $programName = preg_replace('/^PROGRAMS\.[^.]+\./', '', $programName) ?? $programName;
+        $programName = preg_replace('/^(HQD|IOT_WASH)_/', '', $programName) ?? $programName;
+        $programName = str_replace('_', ' ', strtolower($programName));
+        return ucwords($programName);
+    }
+
+    private function TranslateMachineStatus(mixed $value): ?string
+    {
+        return $this->TranslateCode($value, [
+            '0' => 'Getrennt',
+            '1' => 'Bereit',
+            '2' => 'Läuft',
+            '3' => 'Pausiert',
+            '4' => 'Geplant',
+            '5' => 'Geplant',
+            '6' => 'Fehler',
+            '7' => 'Beendet',
+            '8' => 'Test',
+            '9' => 'Beenden'
+        ], 'Status');
+    }
+
+    private function TranslateProgramPhase(mixed $value): ?string
+    {
+        return $this->TranslateCode($value, [
+            '0' => 'Bereit',
+            '1' => 'Waschen',
+            '2' => 'Waschen',
+            '3' => 'Schleudern',
+            '4' => 'Spülen',
+            '5' => 'Spülen',
+            '6' => 'Spülen',
+            '7' => 'Trocknen',
+            '8' => 'Trocknen',
+            '9' => 'Dampf',
+            '10' => 'Bereit',
+            '11' => 'Schleudern',
+            '12' => 'Wiegen',
+            '13' => 'Wiegen',
+            '14' => 'Waschen',
+            '15' => 'Waschen',
+            '16' => 'Waschen',
+            '17' => 'Spülen',
+            '18' => 'Spülen',
+            '19' => 'Geplant',
+            '20' => 'Trommelbewegung',
+            '24' => 'Aktualisieren',
+            '25' => 'Waschen',
+            '26' => 'Heizen',
+            '27' => 'Waschen'
+        ], 'Phase');
+    }
+
+    private function TranslateProgramCode(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $code = (string) $value;
+        $map = json_decode($this->ReadAttributeString('ProgramCodeMapJson'), true);
+        if (is_array($map) && isset($map[$code])) {
+            return $map[$code] . ' (' . $code . ')';
+        }
+
+        return 'Programmcode ' . $code;
+    }
+
+    private function TranslateErrorState(mixed $value): ?string
+    {
+        return $this->TranslateCode($value, [
+            '00' => 'Keine',
+            '100000000000' => 'E2: Tür prüfen',
+            '8000000000000' => 'E4: Wasserversorgung prüfen',
+            '400000000000000' => 'Unwucht: Wäsche prüfen'
+        ], 'Fehler');
+    }
+
+    private function TranslateConnectionStatus(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return match (strtoupper((string) $value)) {
+            'CONNECTED' => 'Verbunden',
+            'DISCONNECTED' => 'Getrennt',
+            default => (string) $value
+        };
+    }
+
+    private function TranslateBinaryCode(mixed $value, string $zeroLabel, string $oneLabel): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return match ((string) $value) {
+            '0' => $zeroLabel,
+            '1' => $oneLabel,
+            default => 'Code ' . (string) $value
+        };
+    }
+
+    private function TranslateCode(mixed $value, array $map, string $unknownPrefix): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $code = (string) $value;
+        return isset($map[$code]) ? $map[$code] . ' (' . $code . ')' : $unknownPrefix . ' ' . $code;
     }
 
     private function ExtractShadowParameters(array $context): array
