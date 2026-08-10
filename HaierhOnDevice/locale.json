@@ -1,0 +1,23 @@
+{
+  "translations": {
+    "de": {
+      "Display name": "Anzeigename",
+      "MAC address": "MAC-Adresse",
+      "Appliance type": "Gerätetyp",
+      "Appliance model ID": "Gerätemodell-ID",
+      "Code": "Code",
+      "Firmware ID": "Firmware-ID",
+      "Firmware version": "Firmware-Version",
+      "Series": "Serie",
+      "Polling interval": "Abfrageintervall",
+      "Refresh state": "Status aktualisieren",
+      "Refresh command definitions": "Befehlsdefinitionen aktualisieren",
+      "Pause program": "Programm pausieren",
+      "Resume program": "Programm fortsetzen",
+      "Stop program": "Programm stoppen",
+      "Active": "Aktiv",
+      "Not configured": "Nicht konfiguriert",
+      "Request failed": "Anfrage fehlgeschlagen"
+    }
+  }
+}

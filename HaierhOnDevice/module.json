@@ -1,0 +1,16 @@
+{
+  "id": "{045FBB47-CDFA-4359-A981-394A954647AD}",
+  "name": "HaierhOnDevice",
+  "type": 3,
+  "vendor": "Haier",
+  "aliases": [
+    "Haier hOn Device"
+  ],
+  "url": "https://hon-smarthome.com/",
+  "parentRequirements": [
+    "{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}"
+  ],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "HHOND"
+}

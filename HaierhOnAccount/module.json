@@ -1,0 +1,18 @@
+{
+  "id": "{48231829-1346-480B-A48E-13FAB565F458}",
+  "name": "HaierhOnAccount",
+  "type": 2,
+  "vendor": "Haier",
+  "aliases": [
+    "Haier hOn Account"
+  ],
+  "url": "https://hon-smarthome.com/",
+  "parentRequirements": [],
+  "childRequirements": [
+    "{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}"
+  ],
+  "implemented": [
+    "{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}"
+  ],
+  "prefix": "HHONA"
+}

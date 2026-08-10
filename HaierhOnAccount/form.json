@@ -1,0 +1,95 @@
+{
+  "elements": [
+    {
+      "type": "ValidationTextBox",
+      "name": "Email",
+      "caption": "E-mail"
+    },
+    {
+      "type": "PasswordTextBox",
+      "name": "Password",
+      "caption": "Password"
+    },
+    {
+      "type": "PasswordTextBox",
+      "name": "InitialRefreshToken",
+      "caption": "Refresh token"
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "Timeout",
+      "caption": "HTTP timeout",
+      "minimum": 5,
+      "maximum": 120
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Advanced API settings",
+      "items": [
+        {
+          "type": "ValidationTextBox",
+          "name": "AppVersion",
+          "caption": "App version"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "ClientId",
+          "caption": "OAuth client ID"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "ApiBase",
+          "caption": "API base URL"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AuthBase",
+          "caption": "Auth base URL"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "UserAgent",
+          "caption": "User agent"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Login / refresh tokens",
+      "onClick": "HHONA_Login($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Load appliances",
+      "onClick": "HHONA_RefreshAppliances($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Create one Haier hOn Device instance per appliance and copy macAddress, applianceType, applianceModelId and code from the appliance JSON."
+    }
+  ],
+  "status": [
+    {
+      "code": 102,
+      "icon": "active",
+      "caption": "Connected"
+    },
+    {
+      "code": 104,
+      "icon": "inactive",
+      "caption": "Not configured"
+    },
+    {
+      "code": 201,
+      "icon": "error",
+      "caption": "Authentication failed"
+    },
+    {
+      "code": 202,
+      "icon": "error",
+      "caption": "API request failed"
+    }
+  ]
+}

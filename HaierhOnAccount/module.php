@@ -1,0 +1,435 @@
+<?php
+
+declare(strict_types=1);
+
+class HaierhOnAccount extends IPSModuleStrict
+{
+    private const CHILD_TO_PARENT = '{3D4DC5E6-0F30-4F61-8EF3-85675A2DEF79}';
+    private const AUTH_EXPIRE_WARNING_SECONDS = 7 * 60 * 60;
+
+    public function Create(): void
+    {
+        parent::Create();
+
+        $this->RegisterPropertyString('Email', '');
+        $this->RegisterPropertyString('Password', '');
+        $this->RegisterPropertyString('InitialRefreshToken', '');
+        $this->RegisterPropertyInteger('Timeout', 30);
+        $this->RegisterPropertyString('AppVersion', '2.0.10');
+        $this->RegisterPropertyString('ClientId', '3MVG9QDx8IX8nP5T2Ha8ofvlmjLZl5L_gvfbT9.HJvpHGKoAS_dcMN8LYpTSYeVFCraUnV.2Ag1Ki7m4znVO6');
+        $this->RegisterPropertyString('ApiBase', 'https://api-iot.he.services');
+        $this->RegisterPropertyString('AuthBase', 'https://account2.hon-smarthome.com');
+        $this->RegisterPropertyString('UserAgent', 'Chrome/110.0.5481.153');
+
+        $this->RegisterAttributeString('AccessToken', '');
+        $this->RegisterAttributeString('IdToken', '');
+        $this->RegisterAttributeString('CognitoToken', '');
+        $this->RegisterAttributeString('RefreshToken', '');
+        $this->RegisterAttributeInteger('TokenTimestamp', 0);
+        $this->RegisterAttributeString('AppliancesJson', '[]');
+        $this->RegisterAttributeString('LastError', '');
+    }
+
+    public function ApplyChanges(): void
+    {
+        parent::ApplyChanges();
+
+        if ($this->ReadPropertyString('Email') === '' && $this->ReadPropertyString('InitialRefreshToken') === '' && $this->ReadAttributeString('RefreshToken') === '') {
+            $this->SetStatus(104);
+            return;
+        }
+
+        if ($this->ReadPropertyString('InitialRefreshToken') !== '' && $this->ReadAttributeString('RefreshToken') === '') {
+            $this->WriteAttributeString('RefreshToken', $this->ReadPropertyString('InitialRefreshToken'));
+        }
+
+        $this->SetStatus(102);
+    }
+
+    public function ForwardData(string $JSONString): string
+    {
+        $data = json_decode($JSONString, true);
+        if (!is_array($data) || (($data['DataID'] ?? '') !== self::CHILD_TO_PARENT)) {
+            return json_encode(['success' => false, 'error' => 'Unsupported data packet']);
+        }
+
+        try {
+            $result = match ((string) ($data['Action'] ?? '')) {
+                'Request' => $this->ApiRequest(
+                    (string) ($data['Method'] ?? 'GET'),
+                    (string) ($data['Endpoint'] ?? ''),
+                    is_array($data['Query'] ?? null) ? $data['Query'] : [],
+                    is_array($data['Body'] ?? null) ? $data['Body'] : null
+                ),
+                'Appliances' => json_decode($this->ReadAttributeString('AppliancesJson'), true),
+                default => throw new RuntimeException('Unsupported action')
+            };
+            return json_encode(['success' => true, 'payload' => $result]);
+        } catch (Throwable $exception) {
+            $this->RememberError($exception->getMessage(), 202);
+            return json_encode(['success' => false, 'error' => $exception->getMessage()]);
+        }
+    }
+
+    public function Login(): bool
+    {
+        try {
+            if ($this->ReadAttributeString('RefreshToken') !== '') {
+                if ($this->RefreshTokens()) {
+                    $this->SetStatus(102);
+                    return true;
+                }
+            }
+
+            $this->AuthenticateWithPassword();
+            $this->SetStatus(102);
+            return true;
+        } catch (Throwable $exception) {
+            $this->RememberError($exception->getMessage(), 201);
+            return false;
+        }
+    }
+
+    public function RefreshAppliances(): string
+    {
+        try {
+            $response = $this->ApiRequest('GET', '/commands/v1/appliance');
+            $appliances = $response['payload']['appliances'] ?? [];
+            if (!is_array($appliances)) {
+                throw new RuntimeException('Appliance response does not contain a valid appliance list');
+            }
+
+            $json = json_encode($appliances, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $this->WriteAttributeString('AppliancesJson', $json === false ? '[]' : $json);
+            $this->SetStatus(102);
+            return $this->ReadAttributeString('AppliancesJson');
+        } catch (Throwable $exception) {
+            $this->RememberError($exception->getMessage(), 202);
+            return '[]';
+        }
+    }
+
+    public function GetAppliancesJson(): string
+    {
+        return $this->ReadAttributeString('AppliancesJson');
+    }
+
+    public function GetLastError(): string
+    {
+        return $this->ReadAttributeString('LastError');
+    }
+
+    public function ApiRequest(string $method, string $endpoint, array $query = [], ?array $body = null): array
+    {
+        $this->EnsureAuthenticated();
+
+        $url = $this->BuildUrl($this->ReadPropertyString('ApiBase'), $endpoint, $query);
+        $headers = [
+            'Content-Type: application/json',
+            'user-agent: ' . $this->ReadPropertyString('UserAgent'),
+            'id-token: ' . $this->ReadAttributeString('IdToken'),
+            'cognito-token: ' . $this->ReadAttributeString('CognitoToken')
+        ];
+        $response = $this->HttpRequest($method, $url, $headers, $body);
+
+        if (($response['status'] === 401 || $response['status'] === 403) && $this->RefreshTokens()) {
+            $headers[2] = 'id-token: ' . $this->ReadAttributeString('IdToken');
+            $headers[3] = 'cognito-token: ' . $this->ReadAttributeString('CognitoToken');
+            $response = $this->HttpRequest($method, $url, $headers, $body);
+        }
+
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            throw new RuntimeException('hOn API returned HTTP ' . $response['status'] . ' for ' . $endpoint);
+        }
+
+        return $this->DecodeJson((string) $response['body'], 'hOn API response');
+    }
+
+    private function EnsureAuthenticated(): void
+    {
+        if ($this->ReadAttributeString('IdToken') !== '' && $this->ReadAttributeString('CognitoToken') !== '' && (time() - $this->ReadAttributeInteger('TokenTimestamp')) < self::AUTH_EXPIRE_WARNING_SECONDS) {
+            return;
+        }
+
+        if (!$this->Login()) {
+            throw new RuntimeException('Authentication failed');
+        }
+    }
+
+    private function RefreshTokens(): bool
+    {
+        $refreshToken = $this->ReadAttributeString('RefreshToken');
+        if ($refreshToken === '') {
+            return false;
+        }
+
+        $url = $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/services/oauth2/token', [
+            'client_id' => $this->ReadPropertyString('ClientId'),
+            'refresh_token' => $refreshToken,
+            'grant_type' => 'refresh_token'
+        ]);
+        $response = $this->HttpRequest('POST', $url, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false);
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            return false;
+        }
+
+        $data = $this->DecodeJson((string) $response['body'], 'OAuth refresh response');
+        $this->WriteAttributeString('AccessToken', (string) ($data['access_token'] ?? ''));
+        $this->WriteAttributeString('IdToken', (string) ($data['id_token'] ?? ''));
+        return $this->LoginToApi();
+    }
+
+    private function AuthenticateWithPassword(): void
+    {
+        if ($this->ReadPropertyString('Email') === '' || $this->ReadPropertyString('Password') === '') {
+            throw new RuntimeException('E-mail/password or a refresh token is required');
+        }
+
+        $cookieFile = tempnam(sys_get_temp_dir(), 'hon-auth-');
+        if ($cookieFile === false) {
+            throw new RuntimeException('Could not create temporary cookie jar');
+        }
+
+        try {
+            $loginUrl = $this->LoadLoginUrl($cookieFile);
+            if ($loginUrl !== '') {
+                $redirectUrl = $this->PrepareSalesforceLogin($loginUrl, $cookieFile);
+                $tokenUrl = $this->SubmitSalesforceLogin($redirectUrl, $cookieFile);
+                $this->ParseTokenUrl($tokenUrl);
+            }
+            $this->LoginToApi();
+        } finally {
+            @unlink($cookieFile);
+        }
+    }
+
+    private function LoadLoginUrl(string $cookieFile): string
+    {
+        $redirectUri = rawurlencode('hon://mobilesdk/detect/oauth/done');
+        $query = [
+            'response_type' => 'token+id_token',
+            'client_id' => $this->ReadPropertyString('ClientId'),
+            'redirect_uri' => $redirectUri,
+            'display' => 'touch',
+            'scope' => 'api openid refresh_token web',
+            'nonce' => $this->CreateNonce()
+        ];
+        $url = $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/services/oauth2/authorize/expid_Login', $query, false);
+        $response = $this->HttpRequest('GET', $url, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $body = (string) $response['body'];
+
+        if (str_contains($body, 'oauth/done#access_token=')) {
+            $this->ParseTokenUrl($body);
+            return '';
+        }
+
+        if (preg_match("/url = '(.+?)'/", $body, $matches) !== 1) {
+            throw new RuntimeException('Could not find hOn login URL');
+        }
+
+        return html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5);
+    }
+
+    private function PrepareSalesforceLogin(string $loginUrl, string $cookieFile): string
+    {
+        $first = $this->HttpRequest('GET', $loginUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+        $location = $first['headers']['location'] ?? '';
+        if ($location === '') {
+            $location = $loginUrl;
+        }
+
+        $second = $this->HttpRequest('GET', $location, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+        $redirect = $second['headers']['location'] ?? $location;
+        return $redirect . (str_contains($redirect, '?') ? '&' : '?') . 'System=IoT_Mobile_App&RegistrationSubChannel=hOn';
+    }
+
+    private function SubmitSalesforceLogin(string $loginUrl, string $cookieFile): string
+    {
+        $page = $this->HttpRequest('GET', $loginUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $body = (string) $page['body'];
+
+        if (preg_match('/"fwuid":"(.*?)","loaded":(\{.*?\})/', $body, $context) !== 1) {
+            throw new RuntimeException('Could not read Salesforce login context');
+        }
+
+        $payload = [
+            'username' => $this->ReadPropertyString('Email'),
+            'password' => $this->ReadPropertyString('Password'),
+            'startUrl' => $loginUrl,
+            'fwuid' => $context[1],
+            'loaded' => json_decode($context[2], true)
+        ];
+
+        $response = $this->HttpRequest('POST', $loginUrl, [
+            'Content-Type: application/json',
+            'user-agent: ' . $this->ReadPropertyString('UserAgent')
+        ], $payload, false, $cookieFile);
+
+        $location = $response['headers']['location'] ?? '';
+        if ($location !== '') {
+            return $location;
+        }
+
+        $data = json_decode((string) $response['body'], true);
+        foreach (['redirect', 'url', 'location'] as $field) {
+            if (is_array($data) && isset($data[$field]) && is_string($data[$field])) {
+                return $data[$field];
+            }
+        }
+
+        throw new RuntimeException('Salesforce login did not return an OAuth redirect');
+    }
+
+    private function ParseTokenUrl(string $tokenSource): void
+    {
+        if (preg_match('/oauth\/done#([^"\']+)/', $tokenSource, $matches) === 1) {
+            $tokenSource = $matches[1];
+        } elseif (str_contains($tokenSource, '#')) {
+            $tokenSource = substr($tokenSource, strpos($tokenSource, '#') + 1);
+        }
+
+        parse_str(str_replace('&amp;', '&', $tokenSource), $tokens);
+        $idToken = (string) ($tokens['id_token'] ?? '');
+        if ($idToken === '') {
+            throw new RuntimeException('OAuth response did not contain an id token');
+        }
+
+        $this->WriteAttributeString('AccessToken', (string) ($tokens['access_token'] ?? ''));
+        $this->WriteAttributeString('IdToken', $idToken);
+        if (isset($tokens['refresh_token'])) {
+            $this->WriteAttributeString('RefreshToken', (string) $tokens['refresh_token']);
+        }
+    }
+
+    private function LoginToApi(): bool
+    {
+        $idToken = $this->ReadAttributeString('IdToken');
+        if ($idToken === '') {
+            return false;
+        }
+
+        $body = [
+            'appVersion' => $this->ReadPropertyString('AppVersion'),
+            'mobileId' => $this->CreateMobileId(),
+            'osVersion' => 31,
+            'os' => 'android',
+            'deviceModel' => 'exynos9820'
+        ];
+
+        $response = $this->HttpRequest('POST', $this->BuildUrl($this->ReadPropertyString('ApiBase'), '/auth/v1/login'), [
+            'Content-Type: application/json',
+            'user-agent: ' . $this->ReadPropertyString('UserAgent'),
+            'id-token: ' . $idToken
+        ], $body);
+
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            return false;
+        }
+
+        $data = $this->DecodeJson((string) $response['body'], 'hOn API login response');
+        $cognito = (string) ($data['cognitoUser']['Token'] ?? '');
+        if ($cognito === '') {
+            return false;
+        }
+
+        $this->WriteAttributeString('CognitoToken', $cognito);
+        $this->WriteAttributeInteger('TokenTimestamp', time());
+        $this->WriteAttributeString('LastError', '');
+        return true;
+    }
+
+    private function HttpRequest(string $method, string $url, array $headers = [], ?array $body = null, bool $followRedirects = true, string $cookieFile = ''): array
+    {
+        if (!function_exists('curl_init')) {
+            throw new RuntimeException('The PHP cURL extension is required for hOn HTTP requests');
+        }
+
+        $curl = curl_init($url);
+        if ($curl === false) {
+            throw new RuntimeException('Could not initialize HTTP request');
+        }
+
+        $responseHeaders = [];
+        curl_setopt_array($curl, [
+            CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => $followRedirects,
+            CURLOPT_MAXREDIRS => 8,
+            CURLOPT_TIMEOUT => $this->ReadPropertyInteger('Timeout'),
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_HEADERFUNCTION => static function ($curlHandle, string $header) use (&$responseHeaders): int {
+                $length = strlen($header);
+                $parts = explode(':', $header, 2);
+                if (count($parts) === 2) {
+                    $responseHeaders[strtolower(trim($parts[0]))] = trim($parts[1]);
+                }
+                return $length;
+            }
+        ]);
+
+        if ($cookieFile !== '') {
+            curl_setopt($curl, CURLOPT_COOKIEJAR, $cookieFile);
+            curl_setopt($curl, CURLOPT_COOKIEFILE, $cookieFile);
+        }
+
+        if ($body !== null) {
+            $encoded = json_encode($body, JSON_UNESCAPED_SLASHES);
+            if ($encoded === false) {
+                throw new RuntimeException('Could not encode HTTP body');
+            }
+            curl_setopt($curl, CURLOPT_POSTFIELDS, $encoded);
+        }
+
+        $responseBody = curl_exec($curl);
+        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($curl);
+        curl_close($curl);
+
+        if ($responseBody === false) {
+            throw new RuntimeException('HTTP request failed: ' . $error);
+        }
+
+        return ['status' => $status, 'headers' => $responseHeaders, 'body' => $responseBody];
+    }
+
+    private function BuildUrl(string $base, string $endpoint, array $query = [], bool $encodeValues = true): string
+    {
+        $url = rtrim($base, '/') . '/' . ltrim($endpoint, '/');
+        if ($query === []) {
+            return $url;
+        }
+
+        $parts = [];
+        foreach ($query as $key => $value) {
+            $parts[] = rawurlencode((string) $key) . '=' . ($encodeValues ? rawurlencode((string) $value) : (string) $value);
+        }
+        return $url . '?' . implode('&', $parts);
+    }
+
+    private function DecodeJson(string $json, string $label): array
+    {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            throw new RuntimeException($label . ' did not contain valid JSON');
+        }
+        return $data;
+    }
+
+    private function CreateNonce(): string
+    {
+        $hex = bin2hex(random_bytes(16));
+        return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4) . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20);
+    }
+
+    private function CreateMobileId(): string
+    {
+        return hash('sha256', $this->ReadPropertyString('Email') . ':' . $this->InstanceID);
+    }
+
+    private function RememberError(string $message, int $status): void
+    {
+        $this->WriteAttributeString('LastError', $message);
+        $this->SendDebug('hOn error', $message, 0);
+        $this->SetStatus($status);
+    }
+}

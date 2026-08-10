@@ -10,7 +10,23 @@ Dieses Repository sammelt Arbeitsnotizen und Referenzen zur inoffiziellen Haier 
 
 ## Status
 
-Der aktuelle Stand ist eine Dokumentations- und Planungsbasis. Eine produktive Integration sollte sorgfaeltig mit Testgeraeten validiert werden, da die hOn API nicht offiziell fuer Drittanbieter dokumentiert ist und sich ohne Vorankuendigung aendern kann.
+Dieses Repository enthaelt jetzt eine erste funktionsfaehige IP-Symcon-Bibliothek:
+
+- `HaierhOnAccount`: Splitter fuer Login, Token-Refresh, Geraeteliste und authentifizierte API-Aufrufe.
+- `HaierhOnDevice`: Device-Modul fuer ein hOn-Geraet mit Kontext-Polling, Statusvariablen und Basisbefehlen.
+
+Eine produktive Integration sollte sorgfaeltig mit Testgeraeten validiert werden, da die hOn API nicht offiziell fuer Drittanbieter dokumentiert ist und sich ohne Vorankuendigung aendern kann.
+
+## IP-Symcon Einrichtung
+
+1. Repository als Modulbibliothek in IP-Symcon einbinden.
+2. Eine Instanz `Haier hOn Account` anlegen.
+3. E-Mail und Passwort oder einen vorhandenen Refresh-Token hinterlegen.
+4. `Login / Tokens erneuern` und danach `Geraete laden` ausfuehren.
+5. Pro Appliance eine `Haier hOn Device` Instanz anlegen und `macAddress`, `applianceType`, `applianceModelId`, `code` sowie optional Firmware-/Serienfelder aus dem Appliance-JSON uebernehmen.
+6. Im Device `Status aktualisieren` und `Befehlsdefinitionen aktualisieren` testen.
+
+Hinweis: Der Login nutzt den aus pyhOn bekannten hOn/Salesforce-OAuth-Ablauf mit Cookies und Redirects. Die PHP-Umgebung von IP-Symcon muss dafuer cURL bereitstellen.
 
 ## Sicherheit
 

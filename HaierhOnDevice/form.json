@@ -1,0 +1,95 @@
+{
+  "elements": [
+    {
+      "type": "ValidationTextBox",
+      "name": "DisplayName",
+      "caption": "Display name"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "MacAddress",
+      "caption": "MAC address"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "ApplianceType",
+      "caption": "Appliance type"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "ApplianceModelId",
+      "caption": "Appliance model ID"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "Code",
+      "caption": "Code"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "FirmwareId",
+      "caption": "Firmware ID"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "FwVersion",
+      "caption": "Firmware version"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "Series",
+      "caption": "Series"
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "PollInterval",
+      "caption": "Polling interval",
+      "minimum": 0,
+      "maximum": 3600
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Refresh state",
+      "onClick": "HHOND_RefreshState($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Refresh command definitions",
+      "onClick": "HHOND_RefreshCommands($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Pause program",
+      "onClick": "HHOND_PauseProgram($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Resume program",
+      "onClick": "HHOND_ResumeProgram($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Stop program",
+      "onClick": "HHOND_StopProgram($id);"
+    }
+  ],
+  "status": [
+    {
+      "code": 102,
+      "icon": "active",
+      "caption": "Active"
+    },
+    {
+      "code": 104,
+      "icon": "inactive",
+      "caption": "Not configured"
+    },
+    {
+      "code": 202,
+      "icon": "error",
+      "caption": "Request failed"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "translations": {
+    "de": {
+      "E-mail": "E-Mail",
+      "Password": "Passwort",
+      "Refresh token": "Refresh-Token",
+      "HTTP timeout": "HTTP-Timeout",
+      "Advanced API settings": "Erweiterte API-Einstellungen",
+      "App version": "App-Version",
+      "OAuth client ID": "OAuth-Client-ID",
+      "API base URL": "API-Basis-URL",
+      "Auth base URL": "Auth-Basis-URL",
+      "User agent": "User-Agent",
+      "Login / refresh tokens": "Login / Tokens erneuern",
+      "Load appliances": "Geräte laden",
+      "Create one Haier hOn Device instance per appliance and copy macAddress, applianceType, applianceModelId and code from the appliance JSON.": "Lege pro Gerät eine Haier hOn Device Instanz an und kopiere macAddress, applianceType, applianceModelId und code aus dem Geräte-JSON.",
+      "Connected": "Verbunden",
+      "Not configured": "Nicht konfiguriert",
+      "Authentication failed": "Authentifizierung fehlgeschlagen",
+      "API request failed": "API-Anfrage fehlgeschlagen"
+    }
+  }
+}
