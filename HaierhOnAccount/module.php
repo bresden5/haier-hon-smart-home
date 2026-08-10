@@ -407,7 +407,7 @@ class HaierhOnAccount extends IPSModuleStrict
             return $this->ResolveUrl($href, $actionUrl);
         }
 
-        throw new RuntimeException('New hOn login form did not return an OAuth redirect; ' . $this->DescribeHtmlForDebug($body));
+        throw new RuntimeException('New hOn login form was not accepted or did not return an hOn OAuth redirect; ' . $this->DescribeHtmlForDebug($body));
     }
 
     private function FetchOAuthTokens(string $url, string $cookieFile): void
@@ -848,15 +848,30 @@ class HaierhOnAccount extends IPSModuleStrict
             if (str_contains($lowerHref, 'oauth/done') || str_contains($lowerHref, 'access_token=') || str_contains($lowerHref, 'id_token=')) {
                 return $href;
             }
-            if (str_contains($href, 'ProgressiveLogin')) {
+            if (str_contains($href, 'ProgressiveLogin') && $this->IsHonOAuthLink($href)) {
                 return $href;
             }
-            if ($fallback === '' && (str_contains($href, 'RemoteAccessAuthorizationPage') || str_contains($href, 'hOnRedirect') || str_contains($lowerHref, 'oauth'))) {
+            if ($fallback === '' && $this->IsHonOAuthLink($href)) {
                 $fallback = $href;
             }
         }
 
         return $fallback;
+    }
+
+    private function IsHonOAuthLink(string $href): bool
+    {
+        $lowerHref = strtolower($href);
+        if (str_contains($lowerHref, 'google.') || str_contains($lowerHref, 'apple.') || str_contains($lowerHref, 'facebook.') || str_contains($lowerHref, 'support.google') || str_contains($lowerHref, 'myaccount.google')) {
+            return false;
+        }
+
+        return str_contains($href, 'RemoteAccessAuthorizationPage')
+            || str_contains($href, 'hOnRedirect')
+            || str_contains($href, 'ProgressiveLogin')
+            || str_contains($href, 'account2.hon-smarthome.com/services/oauth2')
+            || str_starts_with($href, '/services/oauth2/')
+            || str_starts_with($href, 'services/oauth2/');
     }
 
     private function ResolveUrl(string $url, string $baseUrl): string
