@@ -73,6 +73,7 @@ class HaierhOnDevice extends IPSModuleStrict
                 'applianceType' => $this->GetApplianceTypeName(),
                 'category' => 'CYCLE'
             ]);
+            $this->DebugJson('Status response', $context);
             $this->WriteAttributeString('LastContextJson', json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
             $this->UpdateVariables($context);
             $this->WriteAttributeString('LastError', '');
@@ -88,6 +89,7 @@ class HaierhOnDevice extends IPSModuleStrict
     {
         try {
             $commands = $this->RequestParent('GET', '/commands/v1/retrieve', $this->BuildDeviceQuery());
+            $this->DebugJson('Command definitions response', $commands);
             $this->WriteAttributeString('LastCommandsJson', json_encode($commands, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
             $this->WriteAttributeString('LastError', '');
             $this->SetStatus(102);
@@ -365,5 +367,31 @@ class HaierhOnDevice extends IPSModuleStrict
         $this->WriteAttributeString('LastError', $message);
         $this->SendDebug('hOn error', $message, 0);
         $this->SetStatus(202);
+    }
+
+    private function DebugJson(string $title, array $data): void
+    {
+        $json = json_encode($this->SanitizeDebugData($data), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $this->SendDebug($title, $json === false ? '[JSON encode failed]' : $json, 0);
+    }
+
+    private function SanitizeDebugData(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $result = [];
+            foreach ($value as $key => $item) {
+                $lowerKey = strtolower((string) $key);
+                if (str_contains($lowerKey, 'token') || str_contains($lowerKey, 'password') || str_contains($lowerKey, 'secret')) {
+                    $result[$key] = '[redacted]';
+                    continue;
+                }
+
+                $result[$key] = $this->SanitizeDebugData($item);
+            }
+
+            return $result;
+        }
+
+        return $value;
     }
 }
