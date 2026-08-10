@@ -31,7 +31,6 @@ class HaierhOnDevice extends IPSModuleStrict
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
-        $this->ConnectParent(self::ACCOUNT_MODULE);
 
         $this->MaintainVariable('MachineStatus', 'Machine status', VARIABLETYPE_STRING, '', 10, true);
         $this->MaintainVariable('ProgramName', 'Program', VARIABLETYPE_STRING, '', 20, true);
@@ -50,6 +49,11 @@ class HaierhOnDevice extends IPSModuleStrict
         $interval = $this->ReadPropertyInteger('PollInterval');
         $this->SetTimerInterval('RefreshState', $this->ReadPropertyString('MacAddress') === '' ? 0 : $interval * 1000);
         $this->SetStatus($this->ReadPropertyString('MacAddress') === '' ? 104 : 102);
+    }
+
+    public function GetCompatibleParents(): string
+    {
+        return self::ACCOUNT_MODULE;
     }
 
     public function RefreshState(): bool
