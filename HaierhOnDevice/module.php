@@ -32,25 +32,25 @@ class HaierhOnDevice extends IPSModuleStrict
     {
         parent::ApplyChanges();
 
-        $this->MaintainVariable('MachineStatus', 'Machine status', VARIABLETYPE_STRING, '', 10, true);
-        $this->MaintainVariable('ProgramName', 'Program', VARIABLETYPE_STRING, '', 20, true);
-        $this->MaintainVariable('ProgramPhase', 'Program phase', VARIABLETYPE_STRING, '', 30, true);
-        $this->MaintainVariable('RemainingTime', 'Remaining time', VARIABLETYPE_INTEGER, '', 40, true);
-        $this->MaintainVariable('RemainingMainWashTime', 'Remaining main wash time', VARIABLETYPE_INTEGER, '', 45, true);
-        $this->MaintainVariable('DoorStatus', 'Door status', VARIABLETYPE_STRING, '', 50, true);
-        $this->MaintainVariable('DoorLockStatus', 'Door lock', VARIABLETYPE_STRING, '', 60, true);
-        $this->MaintainVariable('RemoteControl', 'Remote control', VARIABLETYPE_BOOLEAN, '~Switch', 70, true);
-        $this->MaintainVariable('Paused', 'Paused', VARIABLETYPE_BOOLEAN, '~Switch', 75, true);
-        $this->MaintainVariable('ErrorState', 'Errors', VARIABLETYPE_STRING, '', 80, true);
-        $this->MaintainVariable('Temperature', 'Temperature', VARIABLETYPE_INTEGER, '', 85, true);
-        $this->MaintainVariable('SpinSpeed', 'Spin speed', VARIABLETYPE_INTEGER, '', 90, true);
-        $this->MaintainVariable('CurrentWaterUsed', 'Current water used', VARIABLETYPE_FLOAT, '', 100, true);
-        $this->MaintainVariable('CurrentElectricityUsed', 'Current electricity used', VARIABLETYPE_FLOAT, '', 110, true);
-        $this->MaintainVariable('TotalWaterUsed', 'Total water used', VARIABLETYPE_FLOAT, '', 120, true);
-        $this->MaintainVariable('TotalElectricityUsed', 'Total electricity used', VARIABLETYPE_FLOAT, '', 130, true);
-        $this->MaintainVariable('CurrentWashCycle', 'Current wash cycle', VARIABLETYPE_INTEGER, '', 140, true);
-        $this->MaintainVariable('TotalWashCycle', 'Total wash cycles', VARIABLETYPE_INTEGER, '', 150, true);
-        $this->MaintainVariable('ConnectionStatus', 'Connection status', VARIABLETYPE_STRING, '', 160, true);
+        $this->MaintainVariable('MachineStatus', 'Maschinenstatus', VARIABLETYPE_STRING, '', 10, true);
+        $this->MaintainVariable('ProgramName', 'Programm', VARIABLETYPE_STRING, '', 20, true);
+        $this->MaintainVariable('ProgramPhase', 'Programmphase', VARIABLETYPE_STRING, '', 30, true);
+        $this->MaintainVariable('RemainingTime', 'Restzeit', VARIABLETYPE_INTEGER, '', 40, true);
+        $this->MaintainVariable('RemainingMainWashTime', 'Restzeit Hauptwäsche', VARIABLETYPE_INTEGER, '', 45, true);
+        $this->MaintainVariable('DoorStatus', 'Türstatus', VARIABLETYPE_STRING, '', 50, true);
+        $this->MaintainVariable('DoorLockStatus', 'Türverriegelung', VARIABLETYPE_STRING, '', 60, true);
+        $this->MaintainVariable('RemoteControl', 'Fernsteuerung', VARIABLETYPE_BOOLEAN, '~Switch', 70, true);
+        $this->MaintainVariable('Paused', 'Pausiert', VARIABLETYPE_BOOLEAN, '~Switch', 75, true);
+        $this->MaintainVariable('ErrorState', 'Fehler', VARIABLETYPE_STRING, '', 80, true);
+        $this->MaintainVariable('Temperature', 'Temperatur', VARIABLETYPE_INTEGER, '', 85, true);
+        $this->MaintainVariable('SpinSpeed', 'Schleuderdrehzahl', VARIABLETYPE_INTEGER, '', 90, true);
+        $this->MaintainVariable('CurrentWaterUsed', 'Aktueller Wasserverbrauch', VARIABLETYPE_FLOAT, '', 100, true);
+        $this->MaintainVariable('CurrentElectricityUsed', 'Aktueller Stromverbrauch', VARIABLETYPE_FLOAT, '', 110, true);
+        $this->MaintainVariable('TotalWaterUsed', 'Wasserverbrauch gesamt', VARIABLETYPE_FLOAT, '', 120, true);
+        $this->MaintainVariable('TotalElectricityUsed', 'Stromverbrauch gesamt', VARIABLETYPE_FLOAT, '', 130, true);
+        $this->MaintainVariable('CurrentWashCycle', 'Aktueller Waschgang', VARIABLETYPE_INTEGER, '', 140, true);
+        $this->MaintainVariable('TotalWashCycle', 'Waschgänge gesamt', VARIABLETYPE_INTEGER, '', 150, true);
+        $this->MaintainVariable('ConnectionStatus', 'Verbindungsstatus', VARIABLETYPE_STRING, '', 160, true);
 
         $interval = $this->ReadPropertyInteger('PollInterval');
         $this->SetTimerInterval('RefreshState', $this->ReadPropertyString('MacAddress') === '' ? 0 : $interval * 1000);
