@@ -471,19 +471,23 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         if (!$this->ParseTokenUrl((string) $tokenResponse['body'])) {
-            throw new RuntimeException('OAuth token page did not contain all required tokens');
+            throw new RuntimeException('OAuth token page did not contain all required tokens; ' . $this->DescribeHtmlForDebug((string) $tokenResponse['body']));
         }
     }
 
     private function ParseTokenUrl(string $tokenSource): bool
     {
+        if (!str_contains($tokenSource, 'id_token=') && !str_contains($tokenSource, 'access_token=') && !str_contains($tokenSource, 'refresh_token=')) {
+            return false;
+        }
+
         if (preg_match('/oauth\/done#([^"\']+)/', $tokenSource, $matches) === 1) {
             $tokenSource = $matches[1];
         } elseif (str_contains($tokenSource, '#')) {
             $tokenSource = substr($tokenSource, strpos($tokenSource, '#') + 1);
         }
 
-        parse_str(str_replace('&amp;', '&', $tokenSource), $tokens);
+        $tokens = $this->ParseOAuthFragment($tokenSource);
         $idToken = (string) ($tokens['id_token'] ?? '');
         if ($idToken === '') {
             return false;
@@ -495,6 +499,27 @@ class HaierhOnAccount extends IPSModuleStrict
             $this->WriteAttributeString('RefreshToken', (string) $tokens['refresh_token']);
         }
         return $this->ReadAttributeString('AccessToken') !== '' && $this->ReadAttributeString('RefreshToken') !== '';
+    }
+
+    private function ParseOAuthFragment(string $fragment): array
+    {
+        $fragment = str_replace('&amp;', '&', $fragment);
+        $tokens = [];
+        foreach (explode('&', $fragment) as $part) {
+            if ($part === '' || !str_contains($part, '=')) {
+                continue;
+            }
+
+            [$key, $value] = explode('=', $part, 2);
+            $key = rawurldecode($key);
+            if (!in_array($key, ['access_token', 'refresh_token', 'id_token'], true)) {
+                continue;
+            }
+
+            $tokens[$key] = rawurldecode($value);
+        }
+
+        return $tokens;
     }
 
     private function LoginToApi(): bool
