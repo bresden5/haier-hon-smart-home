@@ -14,6 +14,7 @@ class HaierhOnAccount extends IPSModuleStrict
         $this->RegisterPropertyString('Email', '');
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('InitialRefreshToken', '');
+        $this->RegisterPropertyString('ManualOAuthCallbackUrl', '');
         $this->RegisterPropertyInteger('Timeout', 30);
         $this->RegisterPropertyString('AppVersion', '2.0.10');
         $this->RegisterPropertyString('ClientId', '3MVG9QDx8IX8nP5T2Ha8ofvlmjLZl5L_gvfbT9.HJvpHGKoAS_dcMN8LYpTSYeVFCraUnV.2Ag1Ki7m4znVO6');
@@ -82,6 +83,31 @@ class HaierhOnAccount extends IPSModuleStrict
             }
 
             $this->AuthenticateWithPassword();
+            $this->SetStatus(102);
+            return true;
+        } catch (Throwable $exception) {
+            $this->RememberError($exception->getMessage(), 201);
+            return false;
+        }
+    }
+
+    public function ImportOAuthCallback(): bool
+    {
+        try {
+            $callbackUrl = $this->ReadPropertyString('ManualOAuthCallbackUrl');
+            if ($callbackUrl === '') {
+                throw new RuntimeException('OAuth callback URL is empty');
+            }
+
+            if (!$this->ParseTokenUrl($callbackUrl)) {
+                throw new RuntimeException('OAuth callback URL does not contain all required tokens');
+            }
+
+            if (!$this->LoginToApi()) {
+                throw new RuntimeException('hOn API login did not return a Cognito token');
+            }
+
+            $this->WriteAttributeString('LastError', '');
             $this->SetStatus(102);
             return true;
         } catch (Throwable $exception) {

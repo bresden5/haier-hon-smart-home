@@ -30,6 +30,8 @@ Hinweis: Der Login nutzt den aus pyhOn bekannten hOn/Salesforce-OAuth-Ablauf mit
 
 Konten, die in der hOn-App ueber Google, Apple oder Facebook angelegt wurden, muessen nach Herstellerhinweis auch wieder ueber diese Methode angemeldet werden. Das Modul unterstuetzt aktuell den hOn E-Mail/Passwort-Login und vorhandene Refresh-Tokens, aber keinen interaktiven Google-/Social-/Captcha-Login.
 
+Auch wenn die App E-Mail- und Kennwortfelder anzeigt, kann der Server nach dem Absenden fuer einzelne Konten in einen Google-Identity- oder Captcha-Flow wechseln. In diesem Fall ist ein automatischer Hintergrund-Login nicht moeglich. Als Ausweg kann in der Account-Instanz eine vollstaendige `hon://mobilesdk/detect/oauth/done#...` OAuth-Callback-URL importiert werden, falls sie aus einer interaktiven Anmeldung verfuegbar ist.
+
 ## Sicherheit
 
 Keine Zugangsdaten, Tokens, Cookies oder Geraete-IDs in dieses Repository committen. Steuerbefehle an Haushaltsgeraete sollten nur nach klarer Nutzeraktion oder expliziter Automationsregel ausgefuehrt werden.

@@ -16,6 +16,11 @@
       "caption": "Refresh token"
     },
     {
+      "type": "PasswordTextBox",
+      "name": "ManualOAuthCallbackUrl",
+      "caption": "OAuth callback URL"
+    },
+    {
       "type": "NumberSpinner",
       "name": "Timeout",
       "caption": "HTTP timeout",
@@ -59,6 +64,11 @@
       "type": "Button",
       "caption": "Login / refresh tokens",
       "onClick": "HHONA_Login($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Import OAuth callback",
+      "onClick": "HHONA_ImportOAuthCallback($id);"
     },
     {
       "type": "Button",
