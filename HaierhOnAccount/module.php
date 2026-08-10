@@ -343,23 +343,23 @@ class HaierhOnAccount extends IPSModuleStrict
 
             $lowerName = strtolower((string) $name);
             $type = strtolower((string) ($field['type'] ?? ''));
-            if (!$hasUserField && ($type === 'email' || str_contains($lowerName, 'email') || str_contains($lowerName, 'user') || str_contains($lowerName, 'login'))) {
+            if (!$hasUserField && $this->IsUsernameField($lowerName, $type)) {
                 $fields[$name]['value'] = $this->ReadPropertyString('Email');
                 $hasUserField = true;
                 continue;
             }
 
-            if (!$hasPasswordField && ($type === 'password' || str_contains($lowerName, 'pass'))) {
+            if (!$hasPasswordField && $this->IsPasswordField($lowerName, $type)) {
                 $fields[$name]['value'] = $this->ReadPropertyString('Password');
                 $hasPasswordField = true;
             }
         }
 
         if (!$hasUserField) {
-            $fields['username'] = ['value' => $this->ReadPropertyString('Email')];
+            throw new RuntimeException('Could not identify username field in new hOn login form; ' . $this->DescribeFormFields($fields));
         }
         if (!$hasPasswordField) {
-            $fields['password'] = ['value' => $this->ReadPropertyString('Password')];
+            throw new RuntimeException('Could not identify password field in new hOn login form; ' . $this->DescribeFormFields($fields));
         }
         if (!array_key_exists('startURL', $fields)) {
             $fields['startURL'] = ['value' => $this->ExtractStartUrl($this->MakeAuthRelativeUrl($loginUrl))];
@@ -736,6 +736,34 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         return [];
+    }
+
+    private function IsUsernameField(string $lowerName, string $type): bool
+    {
+        if (!in_array($type, ['', 'text', 'email'], true)) {
+            return false;
+        }
+
+        return $type === 'email'
+            || str_contains($lowerName, 'email')
+            || str_contains($lowerName, 'username')
+            || preg_match('/(^|[_:\-.])(user|usr|un)($|[_:\-.])/', $lowerName) === 1;
+    }
+
+    private function IsPasswordField(string $lowerName, string $type): bool
+    {
+        return $type === 'password' || ($type === '' && str_contains($lowerName, 'pass'));
+    }
+
+    private function DescribeFormFields(array $fields): string
+    {
+        $descriptions = [];
+        foreach (array_slice($fields, 0, 20) as $name => $field) {
+            $type = is_array($field) ? (string) ($field['type'] ?? '') : '';
+            $descriptions[] = $this->SanitizeDebugText((string) $name, 60) . ':' . $this->SanitizeDebugText($type, 30);
+        }
+
+        return 'fields=' . implode(',', $descriptions);
     }
 
     private function ParseHtmlAttributes(string $html): array
