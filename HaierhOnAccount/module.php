@@ -226,7 +226,15 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         if (preg_match("/url = '(.+?)'/", $body, $matches) !== 1) {
-            throw new RuntimeException('Could not find hOn login URL');
+            if (preg_match('/(?:location(?:\.href)?\s*=|location\.replace\()\s*["\'](.+?)["\']/', $body, $matches) !== 1
+                && preg_match('/href\s*=\s*["\'](.+?hOnRedirect.+?)["\']/', $body, $matches) !== 1) {
+                $finalUrl = (string) ($response['url'] ?? '');
+                if ($finalUrl !== '' && (str_contains($finalUrl, 'hOnRedirect') || str_contains($finalUrl, 'startURL='))) {
+                    return $finalUrl;
+                }
+
+                throw new RuntimeException('Could not find hOn login URL in authorize response from ' . $this->DescribeUrl($finalUrl !== '' ? $finalUrl : $url));
+            }
         }
 
         return html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5);
@@ -492,21 +500,23 @@ class HaierhOnAccount extends IPSModuleStrict
         $currentUrl = $url;
         for ($attempt = 0; $attempt < 10; $attempt++) {
             if ($this->ParseTokenUrl($currentUrl)) {
-                return ['status' => 200, 'headers' => [], 'body' => $currentUrl];
+                return ['status' => 200, 'headers' => [], 'body' => $currentUrl, 'url' => $currentUrl];
             }
 
             if (!$this->IsHttpUrl($currentUrl) && !str_starts_with(trim($currentUrl), '/')) {
                 throw new RuntimeException('Redirect returned an unsupported URL scheme');
             }
 
-            $response = $this->HttpRequest('GET', $this->NormalizeAuthUrl($currentUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+            $requestUrl = $this->NormalizeAuthUrl($currentUrl);
+            $response = $this->HttpRequest('GET', $requestUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+            $response['url'] = $requestUrl;
             $location = (string) ($response['headers']['location'] ?? '');
             if ($location === '') {
                 return $response;
             }
 
             if ($this->ParseTokenUrl($location)) {
-                return ['status' => 200, 'headers' => [], 'body' => $location];
+                return ['status' => 200, 'headers' => [], 'body' => $location, 'url' => $location];
             }
             $currentUrl = $location;
         }
