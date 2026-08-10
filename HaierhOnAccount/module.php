@@ -133,8 +133,28 @@ class HaierhOnAccount extends IPSModuleStrict
 
             $appliances = array_values(array_map(
                 static function (array $appliance): array {
-                    if (!isset($appliance['applianceType']) && isset($appliance['applianceTypeId'])) {
-                        $appliance['applianceType'] = (string) $appliance['applianceTypeId'];
+                    $typeNames = [
+                        '1' => 'WM',
+                        '2' => 'WD',
+                        '4' => 'OV',
+                        '6' => 'WC',
+                        '7' => 'AP',
+                        '8' => 'TD',
+                        '9' => 'DW',
+                        '10' => 'WH',
+                        '11' => 'AC',
+                        '14' => 'REF',
+                        '25' => 'TV',
+                        '27' => 'ATW'
+                    ];
+                    if (isset($appliance['applianceTypeId'])) {
+                        $appliance['applianceTypeId'] = (string) $appliance['applianceTypeId'];
+                    }
+                    if (!isset($appliance['applianceTypeName']) && isset($appliance['applianceTypeId'], $typeNames[(string) $appliance['applianceTypeId']])) {
+                        $appliance['applianceTypeName'] = $typeNames[(string) $appliance['applianceTypeId']];
+                    }
+                    if (isset($appliance['applianceTypeName'])) {
+                        $appliance['applianceType'] = (string) $appliance['applianceTypeName'];
                     }
                     if (!isset($appliance['firmwareId']) && isset($appliance['eepromId'])) {
                         $appliance['firmwareId'] = (string) $appliance['eepromId'];
@@ -806,7 +826,13 @@ class HaierhOnAccount extends IPSModuleStrict
             $result = [];
             foreach ($value as $key => $item) {
                 $keyString = strtolower((string) $key);
-                if (str_contains($keyString, 'token') || str_contains($keyString, 'password') || str_contains($keyString, 'secret')) {
+                if (
+                    str_contains($keyString, 'token')
+                    || str_contains($keyString, 'password')
+                    || str_contains($keyString, 'secret')
+                    || str_contains($keyString, 'serial')
+                    || in_array($keyString, ['pk', 'sk', 'coords', 'lat', 'lng'], true)
+                ) {
                     $result[$key] = '[redacted]';
                     continue;
                 }

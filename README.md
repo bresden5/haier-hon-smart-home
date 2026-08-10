@@ -23,7 +23,7 @@ Eine produktive Integration sollte sorgfaeltig mit Testgeraeten validiert werden
 2. Eine Instanz `Haier hOn Account` anlegen.
 3. E-Mail und Passwort oder einen vorhandenen Refresh-Token hinterlegen.
 4. `Login / Tokens erneuern` und danach `Geraete laden` ausfuehren.
-5. Pro Appliance eine `Haier hOn Device` Instanz anlegen und `macAddress`, `applianceType`, `applianceModelId`, `code` sowie optional Firmware-/Serienfelder aus dem Appliance-JSON uebernehmen.
+5. Pro Appliance eine `Haier hOn Device` Instanz anlegen und `macAddress`, `applianceType` oder `applianceTypeName` (z. B. `WM`), `applianceModelId`, `code` sowie optional `eepromId`/`firmwareId`, `fwVersion` und `series` aus dem Appliance-JSON uebernehmen.
 6. Im Device `Status aktualisieren` und `Befehlsdefinitionen aktualisieren` testen.
 
 Der primaere Login nutzt inzwischen den aus der aktuellen Home-Assistant-Integration `gvigroux/hon` abgeleiteten CIAM-PKCE-Ablauf ueber `https://api-iot.he.services/ciam/authorize` und `/ciam/token`. Der alte hOn/Salesforce-OAuth-Ablauf bleibt nur als Fallback erhalten. Die PHP-Umgebung von IP-Symcon muss dafuer cURL bereitstellen.

@@ -53,7 +53,10 @@ class HaierhOnDevice extends IPSModuleStrict
 
     public function GetCompatibleParents(): string
     {
-        return self::ACCOUNT_MODULE;
+        return json_encode([
+            'type' => 'connect',
+            'moduleIDs' => [self::ACCOUNT_MODULE]
+        ], JSON_UNESCAPED_SLASHES);
     }
 
     public function RefreshState(): bool
@@ -61,7 +64,7 @@ class HaierhOnDevice extends IPSModuleStrict
         try {
             $context = $this->RequestParent('GET', '/commands/v1/context', [
                 'macAddress' => $this->ReadPropertyString('MacAddress'),
-                'applianceType' => $this->ReadPropertyString('ApplianceType'),
+                'applianceType' => $this->GetApplianceTypeName(),
                 'category' => 'CYCLE'
             ]);
             $this->WriteAttributeString('LastContextJson', json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
@@ -157,7 +160,7 @@ class HaierhOnDevice extends IPSModuleStrict
                 ],
                 'ancillaryParameters' => new stdClass(),
                 'parameters' => $parameters,
-                'applianceType' => $this->ReadPropertyString('ApplianceType')
+                'applianceType' => $this->GetApplianceTypeName()
             ];
 
             if ($programName !== '') {
@@ -201,7 +204,7 @@ class HaierhOnDevice extends IPSModuleStrict
     private function BuildDeviceQuery(): array
     {
         return array_filter([
-            'applianceType' => $this->ReadPropertyString('ApplianceType'),
+            'applianceType' => $this->GetApplianceTypeId(),
             'applianceModelId' => $this->ReadPropertyString('ApplianceModelId'),
             'macAddress' => $this->ReadPropertyString('MacAddress'),
             'os' => 'android',
@@ -211,6 +214,44 @@ class HaierhOnDevice extends IPSModuleStrict
             'fwVersion' => $this->ReadPropertyString('FwVersion'),
             'series' => $this->ReadPropertyString('Series')
         ], static fn (string $value): bool => $value !== '');
+    }
+
+    private function GetApplianceTypeId(): string
+    {
+        $type = $this->ReadPropertyString('ApplianceType');
+        if (is_numeric($type)) {
+            return $type;
+        }
+
+        return array_flip($this->GetApplianceTypeMap())[strtoupper($type)] ?? $type;
+    }
+
+    private function GetApplianceTypeName(): string
+    {
+        $type = $this->ReadPropertyString('ApplianceType');
+        if (!is_numeric($type)) {
+            return strtoupper($type);
+        }
+
+        return $this->GetApplianceTypeMap()[$type] ?? $type;
+    }
+
+    private function GetApplianceTypeMap(): array
+    {
+        return [
+            '1' => 'WM',
+            '2' => 'WD',
+            '4' => 'OV',
+            '6' => 'WC',
+            '7' => 'AP',
+            '8' => 'TD',
+            '9' => 'DW',
+            '10' => 'WH',
+            '11' => 'AC',
+            '14' => 'REF',
+            '25' => 'TV',
+            '27' => 'ATW'
+        ];
     }
 
     private function CommandExists(string $commandName): bool
