@@ -264,11 +264,12 @@ class HaierhOnAccount extends IPSModuleStrict
         $page = $this->SafeGet($loginUrl, $cookieFile);
         $body = (string) $page['body'];
 
-        if (preg_match('/"fwuid":"(.*?)","loaded":(\{.*?\})/', $body, $context) !== 1) {
-            throw new RuntimeException('Could not read Salesforce Aura login context');
+        $context = $this->ExtractAuraContext($body);
+        if ($context === []) {
+            throw new RuntimeException('Could not read Salesforce Aura login context; ' . $this->DescribeHtmlForDebug($body));
         }
 
-        $loaded = json_decode($context[2], true);
+        $loaded = json_decode($context['loaded'], true);
         if (!is_array($loaded)) {
             throw new RuntimeException('Salesforce Aura login context is not valid JSON');
         }
@@ -290,7 +291,7 @@ class HaierhOnAccount extends IPSModuleStrict
             'message' => ['actions' => [$action]],
             'aura.context' => [
                 'mode' => 'PROD',
-                'fwuid' => $context[1],
+                'fwuid' => $context['fwuid'],
                 'app' => 'siteforce:loginApp2',
                 'loaded' => $loaded,
                 'dn' => [],
@@ -550,6 +551,80 @@ class HaierhOnAccount extends IPSModuleStrict
             throw new RuntimeException($label . ' did not contain valid JSON');
         }
         return $data;
+    }
+
+    private function ExtractAuraContext(string $html): array
+    {
+        foreach ([$html, html_entity_decode($html, ENT_QUOTES | ENT_HTML5)] as $candidate) {
+            if (preg_match('/"fwuid"\s*:\s*"([^"]+)"/', $candidate, $fwuidMatch) !== 1) {
+                continue;
+            }
+
+            $loadedPosition = strpos($candidate, '"loaded"');
+            if ($loadedPosition === false) {
+                continue;
+            }
+
+            $colonPosition = strpos($candidate, ':', $loadedPosition);
+            if ($colonPosition === false) {
+                continue;
+            }
+
+            $braceStart = strpos($candidate, '{', $colonPosition);
+            if ($braceStart === false) {
+                continue;
+            }
+
+            $loadedJson = $this->ExtractBalancedJsonObject($candidate, $braceStart);
+            if ($loadedJson !== '' && json_decode($loadedJson, true) !== null) {
+                return ['fwuid' => $fwuidMatch[1], 'loaded' => $loadedJson];
+            }
+        }
+
+        return [];
+    }
+
+    private function ExtractBalancedJsonObject(string $text, int $start): string
+    {
+        $depth = 0;
+        $inString = false;
+        $escaped = false;
+        $length = strlen($text);
+
+        for ($index = $start; $index < $length; $index++) {
+            $char = $text[$index];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                    continue;
+                }
+                if ($char === '\\') {
+                    $escaped = true;
+                    continue;
+                }
+                if ($char === '"') {
+                    $inString = false;
+                }
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($text, $start, $index - $start + 1);
+                }
+            }
+        }
+
+        return '';
     }
 
     private function BuildAuraFormBody(array $payload): string
