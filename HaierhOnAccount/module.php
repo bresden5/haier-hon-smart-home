@@ -195,7 +195,9 @@ class HaierhOnAccount extends IPSModuleStrict
             if ($introduceUrl !== '') {
                 $loginUrl = $this->PrepareSalesforceLogin($introduceUrl, $cookieFile);
                 $tokenUrl = $this->SubmitSalesforceLogin($loginUrl, $cookieFile);
-                $this->FetchOAuthTokens($tokenUrl, $cookieFile);
+                if ($tokenUrl !== '') {
+                    $this->FetchOAuthTokens($tokenUrl, $cookieFile);
+                }
             }
             if (!$this->LoginToApi()) {
                 throw new RuntimeException('hOn API login did not return a Cognito token');
@@ -266,6 +268,10 @@ class HaierhOnAccount extends IPSModuleStrict
 
         $context = $this->ExtractAuraContext($body);
         if ($context === []) {
+            $form = $this->ExtractLoginForm($body, $loginUrl);
+            if ($form !== []) {
+                return $this->SubmitNewHonLoginForm($form, $loginUrl, $cookieFile);
+            }
             throw new RuntimeException('Could not read Salesforce Aura login context; ' . $this->DescribeHtmlForDebug($body));
         }
 
@@ -322,6 +328,89 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         return $url;
+    }
+
+    private function SubmitNewHonLoginForm(array $form, string $loginUrl, string $cookieFile): string
+    {
+        $fields = is_array($form['fields'] ?? null) ? $form['fields'] : [];
+        $hasUserField = false;
+        $hasPasswordField = false;
+
+        foreach ($fields as $name => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            $lowerName = strtolower((string) $name);
+            $type = strtolower((string) ($field['type'] ?? ''));
+            if (!$hasUserField && ($type === 'email' || str_contains($lowerName, 'email') || str_contains($lowerName, 'user') || str_contains($lowerName, 'login'))) {
+                $fields[$name]['value'] = $this->ReadPropertyString('Email');
+                $hasUserField = true;
+                continue;
+            }
+
+            if (!$hasPasswordField && ($type === 'password' || str_contains($lowerName, 'pass'))) {
+                $fields[$name]['value'] = $this->ReadPropertyString('Password');
+                $hasPasswordField = true;
+            }
+        }
+
+        if (!$hasUserField) {
+            $fields['username'] = ['value' => $this->ReadPropertyString('Email')];
+        }
+        if (!$hasPasswordField) {
+            $fields['password'] = ['value' => $this->ReadPropertyString('Password')];
+        }
+        if (!array_key_exists('startURL', $fields)) {
+            $fields['startURL'] = ['value' => $this->ExtractStartUrl($this->MakeAuthRelativeUrl($loginUrl))];
+        }
+
+        $postFields = [];
+        foreach ($fields as $name => $field) {
+            if ((string) $name === '') {
+                continue;
+            }
+            $postFields[(string) $name] = is_array($field) ? (string) ($field['value'] ?? '') : (string) $field;
+        }
+
+        $action = (string) ($form['action'] ?? '/NewhOnLogin');
+        $response = $this->HttpRequest('POST', $this->NormalizeAuthUrl($action), [
+            'Content-Type: application/x-www-form-urlencoded',
+            'user-agent: ' . $this->ReadPropertyString('UserAgent'),
+            'referer: ' . $this->NormalizeAuthUrl($loginUrl)
+        ], null, false, $cookieFile, http_build_query($postFields, '', '&', PHP_QUERY_RFC3986));
+
+        if ($response['status'] < 200 || $response['status'] >= 400) {
+            throw new RuntimeException('New hOn login form returned HTTP ' . $response['status'] . '; ' . $this->DescribeHtmlForDebug((string) $response['body']));
+        }
+
+        $location = (string) ($response['headers']['location'] ?? '');
+        if ($location !== '') {
+            if ($this->ParseTokenUrl($location)) {
+                return '';
+            }
+            return $location;
+        }
+
+        $body = (string) $response['body'];
+        if ($this->ParseTokenUrl($body)) {
+            return '';
+        }
+
+        if (preg_match('/(?:location(?:\.href)?\s*=|location\.replace\()\s*["\'](.+?)["\']/', $body, $matches) === 1) {
+            return html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5);
+        }
+
+        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $body, $matches) > 0) {
+            foreach ($matches[1] as $href) {
+                $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5);
+                if (str_contains($href, 'oauth') || str_contains($href, 'RemoteAccessAuthorizationPage') || str_contains($href, 'hOnRedirect')) {
+                    return $href;
+                }
+            }
+        }
+
+        throw new RuntimeException('New hOn login form did not return an OAuth redirect; ' . $this->DescribeHtmlForDebug($body));
     }
 
     private function FetchOAuthTokens(string $url, string $cookieFile): void
@@ -582,6 +671,57 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         return [];
+    }
+
+    private function ExtractLoginForm(string $html, string $baseUrl): array
+    {
+        if (preg_match_all('/<form\b[^>]*>.*?<\/form>/is', $html, $forms) === 0) {
+            return [];
+        }
+
+        foreach ($forms[0] as $formHtml) {
+            $attributes = $this->ParseHtmlAttributes($formHtml);
+            $action = (string) ($attributes['action'] ?? '');
+            if ($action === '') {
+                $action = $baseUrl;
+            }
+
+            if (!str_contains(strtolower($action), 'newhonlogin') && !str_contains(strtolower($formHtml), 'password')) {
+                continue;
+            }
+
+            $fields = [];
+            if (preg_match_all('/<input\b[^>]*>/i', $formHtml, $inputs) > 0) {
+                foreach ($inputs[0] as $inputHtml) {
+                    $inputAttributes = $this->ParseHtmlAttributes($inputHtml);
+                    $name = (string) ($inputAttributes['name'] ?? '');
+                    if ($name === '') {
+                        continue;
+                    }
+
+                    $fields[$name] = [
+                        'type' => (string) ($inputAttributes['type'] ?? 'text'),
+                        'value' => (string) ($inputAttributes['value'] ?? '')
+                    ];
+                }
+            }
+
+            return ['action' => $action, 'fields' => $fields];
+        }
+
+        return [];
+    }
+
+    private function ParseHtmlAttributes(string $html): array
+    {
+        $attributes = [];
+        if (preg_match_all('/([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(["\'])(.*?)\2/s', $html, $matches, PREG_SET_ORDER) > 0) {
+            foreach ($matches as $match) {
+                $attributes[strtolower($match[1])] = html_entity_decode($match[3], ENT_QUOTES | ENT_HTML5);
+            }
+        }
+
+        return $attributes;
     }
 
     private function ExtractBalancedJsonObject(string $text, int $start): string
