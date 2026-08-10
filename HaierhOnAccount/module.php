@@ -248,7 +248,7 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function SubmitSalesforceLogin(string $loginUrl, string $cookieFile): string
     {
-        $page = $this->HttpRequest('GET', $loginUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $page = $this->HttpRequest('GET', $this->NormalizeAuthUrl($loginUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
         $body = (string) $page['body'];
 
         if (preg_match('/"fwuid":"(.*?)","loaded":(\{.*?\})/', $body, $context) !== 1) {
@@ -312,9 +312,31 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function FetchOAuthTokens(string $url, string $cookieFile): void
     {
-        $response = $this->HttpRequest('GET', $url, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
-        if ($response['status'] < 200 || $response['status'] >= 300) {
-            throw new RuntimeException('OAuth redirect returned HTTP ' . $response['status']);
+        $currentUrl = $url;
+        for ($attempt = 0; $attempt < 6; $attempt++) {
+            if ($this->ParseTokenUrl($currentUrl)) {
+                return;
+            }
+
+            if (!$this->IsHttpUrl($currentUrl) && !str_starts_with(trim($currentUrl), '/')) {
+                throw new RuntimeException('OAuth redirect returned an unsupported URL scheme');
+            }
+
+            $response = $this->HttpRequest('GET', $this->NormalizeAuthUrl($currentUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+            $location = (string) ($response['headers']['location'] ?? '');
+            if ($location !== '') {
+                if ($this->ParseTokenUrl($location)) {
+                    return;
+                }
+                $currentUrl = $location;
+                continue;
+            }
+
+            break;
+        }
+
+        if (!isset($response) || $response['status'] < 200 || $response['status'] >= 300) {
+            throw new RuntimeException('OAuth redirect returned HTTP ' . ($response['status'] ?? 0));
         }
 
         $body = (string) $response['body'];
@@ -522,10 +544,17 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function NormalizeAuthUrl(string $url): string
     {
-        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+        $url = trim(html_entity_decode($url, ENT_QUOTES | ENT_HTML5));
+        if ($this->IsHttpUrl($url)) {
             return $url;
         }
         return rtrim($this->ReadPropertyString('AuthBase'), '/') . '/' . ltrim($url, '/');
+    }
+
+    private function IsHttpUrl(string $url): bool
+    {
+        $url = trim($url);
+        return str_starts_with($url, 'http://') || str_starts_with($url, 'https://');
     }
 
     private function CreateNonce(): string
