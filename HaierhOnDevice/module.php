@@ -33,24 +33,31 @@ class HaierhOnDevice extends IPSModuleStrict
     {
         parent::ApplyChanges();
 
+        $this->RegisterIntegerProfile('HHOND.Minutes', ' min');
+        $this->RegisterIntegerProfile('HHOND.Celsius', ' °C');
+        $this->RegisterIntegerProfile('HHOND.Rpm', ' U/min');
+        $this->RegisterIntegerProfile('HHOND.Count', ' x');
+        $this->RegisterFloatProfile('HHOND.Liters', ' l', 2);
+        $this->RegisterFloatProfile('HHOND.KilowattHours', ' kWh', 2);
+
         $this->MaintainVariable('MachineStatus', 'Maschinenstatus', VARIABLETYPE_STRING, '', 10, true);
         $this->MaintainVariable('ProgramName', 'Programm', VARIABLETYPE_STRING, '', 20, true);
         $this->MaintainVariable('ProgramPhase', 'Programmphase', VARIABLETYPE_STRING, '', 30, true);
-        $this->MaintainVariable('RemainingTime', 'Restzeit', VARIABLETYPE_INTEGER, '', 40, true);
-        $this->MaintainVariable('RemainingMainWashTime', 'Restzeit Hauptwäsche', VARIABLETYPE_INTEGER, '', 45, true);
+        $this->MaintainVariable('RemainingTime', 'Restzeit', VARIABLETYPE_INTEGER, 'HHOND.Minutes', 40, true);
+        $this->MaintainVariable('RemainingMainWashTime', 'Restzeit Hauptwäsche', VARIABLETYPE_INTEGER, 'HHOND.Minutes', 45, true);
         $this->MaintainVariable('DoorStatus', 'Türstatus', VARIABLETYPE_STRING, '', 50, true);
         $this->MaintainVariable('DoorLockStatus', 'Türverriegelung', VARIABLETYPE_STRING, '', 60, true);
         $this->MaintainVariable('RemoteControl', 'Fernsteuerung', VARIABLETYPE_BOOLEAN, '~Switch', 70, true);
         $this->MaintainVariable('Paused', 'Pausiert', VARIABLETYPE_BOOLEAN, '~Switch', 75, true);
         $this->MaintainVariable('ErrorState', 'Fehler', VARIABLETYPE_STRING, '', 80, true);
-        $this->MaintainVariable('Temperature', 'Temperatur', VARIABLETYPE_INTEGER, '', 85, true);
-        $this->MaintainVariable('SpinSpeed', 'Schleuderdrehzahl', VARIABLETYPE_INTEGER, '', 90, true);
-        $this->MaintainVariable('CurrentWaterUsed', 'Aktueller Wasserverbrauch', VARIABLETYPE_FLOAT, '', 100, true);
-        $this->MaintainVariable('CurrentElectricityUsed', 'Aktueller Stromverbrauch', VARIABLETYPE_FLOAT, '', 110, true);
-        $this->MaintainVariable('TotalWaterUsed', 'Wasserverbrauch gesamt', VARIABLETYPE_FLOAT, '', 120, true);
-        $this->MaintainVariable('TotalElectricityUsed', 'Stromverbrauch gesamt', VARIABLETYPE_FLOAT, '', 130, true);
-        $this->MaintainVariable('CurrentWashCycle', 'Aktueller Waschgang', VARIABLETYPE_INTEGER, '', 140, true);
-        $this->MaintainVariable('TotalWashCycle', 'Waschgänge gesamt', VARIABLETYPE_INTEGER, '', 150, true);
+        $this->MaintainVariable('Temperature', 'Temperatur', VARIABLETYPE_INTEGER, 'HHOND.Celsius', 85, true);
+        $this->MaintainVariable('SpinSpeed', 'Schleuderdrehzahl', VARIABLETYPE_INTEGER, 'HHOND.Rpm', 90, true);
+        $this->MaintainVariable('CurrentWaterUsed', 'Aktueller Wasserverbrauch', VARIABLETYPE_FLOAT, 'HHOND.Liters', 100, true);
+        $this->MaintainVariable('CurrentElectricityUsed', 'Aktueller Stromverbrauch', VARIABLETYPE_FLOAT, 'HHOND.KilowattHours', 110, true);
+        $this->MaintainVariable('TotalWaterUsed', 'Wasserverbrauch gesamt', VARIABLETYPE_FLOAT, 'HHOND.Liters', 120, true);
+        $this->MaintainVariable('TotalElectricityUsed', 'Stromverbrauch gesamt', VARIABLETYPE_FLOAT, 'HHOND.KilowattHours', 130, true);
+        $this->MaintainVariable('CurrentWashCycle', 'Aktueller Waschgang', VARIABLETYPE_INTEGER, 'HHOND.Count', 140, true);
+        $this->MaintainVariable('TotalWashCycle', 'Waschgänge gesamt', VARIABLETYPE_INTEGER, 'HHOND.Count', 150, true);
         $this->MaintainVariable('ConnectionStatus', 'Verbindungsstatus', VARIABLETYPE_STRING, '', 160, true);
 
         $interval = $this->ReadPropertyInteger('PollInterval');
@@ -215,6 +222,26 @@ class HaierhOnDevice extends IPSModuleStrict
         }
 
         return is_array($data['payload'] ?? null) ? $data['payload'] : [];
+    }
+
+    private function RegisterIntegerProfile(string $name, string $suffix): void
+    {
+        if (!IPS_VariableProfileExists($name)) {
+            IPS_CreateVariableProfile($name, VARIABLETYPE_INTEGER);
+        }
+
+        IPS_SetVariableProfileText($name, '', $suffix);
+        IPS_SetVariableProfileDigits($name, 0);
+    }
+
+    private function RegisterFloatProfile(string $name, string $suffix, int $digits): void
+    {
+        if (!IPS_VariableProfileExists($name)) {
+            IPS_CreateVariableProfile($name, VARIABLETYPE_FLOAT);
+        }
+
+        IPS_SetVariableProfileText($name, '', $suffix);
+        IPS_SetVariableProfileDigits($name, $digits);
     }
 
     private function BuildDeviceQuery(): array
