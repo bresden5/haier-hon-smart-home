@@ -209,7 +209,7 @@ class HaierhOnAccount extends IPSModuleStrict
     {
         $redirectUri = 'hon://mobilesdk/detect/oauth/done';
         $query = [
-            'response_type' => 'token+id_token',
+            'response_type' => 'token id_token',
             'client_id' => $this->ReadPropertyString('ClientId'),
             'redirect_uri' => $redirectUri,
             'display' => 'touch',
@@ -638,6 +638,10 @@ class HaierhOnAccount extends IPSModuleStrict
             if (stripos($html, $needle) !== false) {
                 $hints[] = 'contains=' . $needle;
             }
+        }
+
+        if (preg_match('/(?:error|error_description)["\'\s:=]+([^<>"\']+)/i', $html, $matches) === 1) {
+            $hints[] = 'oauthError=' . $this->SanitizeDebugText($matches[1], 120);
         }
 
         return $hints === [] ? 'no safe HTML hints found' : implode('; ', $hints);
