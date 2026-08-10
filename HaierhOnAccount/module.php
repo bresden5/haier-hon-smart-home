@@ -402,7 +402,7 @@ class HaierhOnAccount extends IPSModuleStrict
             return $this->ResolveUrl(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), $actionUrl);
         }
 
-        $href = $this->FindOAuthHref($body);
+        $href = $this->FindOAuthUrl($body);
         if ($href !== '') {
             return $this->ResolveUrl($href, $actionUrl);
         }
@@ -445,9 +445,9 @@ class HaierhOnAccount extends IPSModuleStrict
             return;
         }
 
-        $nextUrl = $this->FindOAuthHref($body);
+        $nextUrl = $this->FindOAuthUrl($body);
         if ($nextUrl === '') {
-            throw new RuntimeException('OAuth redirect did not contain a token link');
+            throw new RuntimeException('OAuth redirect did not contain a token link; ' . $this->DescribeHtmlForDebug($body));
         }
 
         $nextUrl = $this->ResolveUrl($nextUrl, $requestUrl);
@@ -458,9 +458,9 @@ class HaierhOnAccount extends IPSModuleStrict
             }
 
             $progressiveUrl = (string) ($progressive['url'] ?? $nextUrl);
-            $nextUrl = $this->FindOAuthHref((string) $progressive['body']);
+            $nextUrl = $this->FindOAuthUrl((string) $progressive['body']);
             if ($nextUrl === '') {
-                throw new RuntimeException('Progressive login did not contain a token link');
+                throw new RuntimeException('Progressive login did not contain a token link; ' . $this->DescribeHtmlForDebug((string) $progressive['body']));
             }
             $nextUrl = $this->ResolveUrl($nextUrl, $progressiveUrl);
         }
@@ -835,14 +835,24 @@ class HaierhOnAccount extends IPSModuleStrict
         return rtrim($this->ReadPropertyString('AuthBase'), '/') . '/' . ltrim($url, '/');
     }
 
-    private function FindOAuthHref(string $html): string
+    private function FindOAuthUrl(string $html): string
     {
-        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $html, $matches) === 0 || $matches[1] === []) {
-            return '';
+        $candidates = [];
+        foreach ([
+            '/href\s*=\s*["\'](.+?)["\']/i',
+            '/action\s*=\s*["\'](.+?)["\']/i',
+            '/(?:location(?:\.href)?\s*=|location\.replace\()\s*["\'](.+?)["\']/i',
+            '/url=([^;"\'\s<>]+)/i'
+        ] as $pattern) {
+            if (preg_match_all($pattern, $html, $matches) > 0) {
+                foreach ($matches[1] as $candidate) {
+                    $candidates[] = $candidate;
+                }
+            }
         }
 
         $fallback = '';
-        foreach ($matches[1] as $href) {
+        foreach ($candidates as $href) {
             $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5);
             $lowerHref = strtolower($href);
             if (str_contains($lowerHref, 'oauth/done') || str_contains($lowerHref, 'access_token=') || str_contains($lowerHref, 'id_token=')) {
