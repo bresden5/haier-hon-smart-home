@@ -191,13 +191,15 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         try {
-            $loginUrl = $this->LoadLoginUrl($cookieFile);
-            if ($loginUrl !== '') {
-                $redirectUrl = $this->PrepareSalesforceLogin($loginUrl, $cookieFile);
-                $tokenUrl = $this->SubmitSalesforceLogin($redirectUrl, $cookieFile);
-                $this->ParseTokenUrl($tokenUrl);
+            $introduceUrl = $this->LoadLoginUrl($cookieFile);
+            if ($introduceUrl !== '') {
+                $loginUrl = $this->PrepareSalesforceLogin($introduceUrl, $cookieFile);
+                $tokenUrl = $this->SubmitSalesforceLogin($loginUrl, $cookieFile);
+                $this->FetchOAuthTokens($tokenUrl, $cookieFile);
             }
-            $this->LoginToApi();
+            if (!$this->LoginToApi()) {
+                throw new RuntimeException('hOn API login did not return a Cognito token');
+            }
         } finally {
             @unlink($cookieFile);
         }
@@ -232,14 +234,15 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function PrepareSalesforceLogin(string $loginUrl, string $cookieFile): string
     {
-        $first = $this->HttpRequest('GET', $loginUrl, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+        $first = $this->HttpRequest('GET', $this->NormalizeAuthUrl($loginUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
         $location = $first['headers']['location'] ?? '';
         if ($location === '') {
             $location = $loginUrl;
         }
 
-        $second = $this->HttpRequest('GET', $location, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+        $second = $this->HttpRequest('GET', $this->NormalizeAuthUrl($location), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
         $redirect = $second['headers']['location'] ?? $location;
+        $redirect = $this->NormalizeAuthUrl($redirect);
         return $redirect . (str_contains($redirect, '?') ? '&' : '?') . 'System=IoT_Mobile_App&RegistrationSubChannel=hOn';
     }
 
@@ -249,38 +252,104 @@ class HaierhOnAccount extends IPSModuleStrict
         $body = (string) $page['body'];
 
         if (preg_match('/"fwuid":"(.*?)","loaded":(\{.*?\})/', $body, $context) !== 1) {
-            throw new RuntimeException('Could not read Salesforce login context');
+            throw new RuntimeException('Could not read Salesforce Aura login context');
         }
 
-        $payload = [
-            'username' => $this->ReadPropertyString('Email'),
-            'password' => $this->ReadPropertyString('Password'),
-            'startUrl' => $loginUrl,
-            'fwuid' => $context[1],
-            'loaded' => json_decode($context[2], true)
+        $loaded = json_decode($context[2], true);
+        if (!is_array($loaded)) {
+            throw new RuntimeException('Salesforce Aura login context is not valid JSON');
+        }
+
+        $pageUri = $this->MakeAuthRelativeUrl($loginUrl);
+        $startUrl = $this->ExtractStartUrl($pageUri);
+        $action = [
+            'id' => '79;a',
+            'descriptor' => 'apex://LightningLoginCustomController/ACTION$login',
+            'callingDescriptor' => 'markup://c:loginForm',
+            'params' => [
+                'username' => rawurlencode($this->ReadPropertyString('Email')),
+                'password' => rawurlencode($this->ReadPropertyString('Password')),
+                'startUrl' => $startUrl
+            ]
         ];
 
-        $response = $this->HttpRequest('POST', $loginUrl, [
-            'Content-Type: application/json',
+        $auraPayload = [
+            'message' => ['actions' => [$action]],
+            'aura.context' => [
+                'mode' => 'PROD',
+                'fwuid' => $context[1],
+                'app' => 'siteforce:loginApp2',
+                'loaded' => $loaded,
+                'dn' => [],
+                'globals' => new stdClass(),
+                'uad' => false
+            ],
+            'aura.pageURI' => $pageUri,
+            'aura.token' => null
+        ];
+
+        $formBody = $this->BuildAuraFormBody($auraPayload);
+        $response = $this->HttpRequest('POST', $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/s/sfsites/aura', [
+            'r' => 3,
+            'other.LightningLoginCustom.login' => 1
+        ]), [
+            'Content-Type: application/x-www-form-urlencoded',
             'user-agent: ' . $this->ReadPropertyString('UserAgent')
-        ], $payload, false, $cookieFile);
+        ], null, false, $cookieFile, $formBody);
 
-        $location = $response['headers']['location'] ?? '';
-        if ($location !== '') {
-            return $location;
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            throw new RuntimeException('Salesforce Aura login returned HTTP ' . $response['status']);
         }
 
-        $data = json_decode((string) $response['body'], true);
-        foreach (['redirect', 'url', 'location'] as $field) {
-            if (is_array($data) && isset($data[$field]) && is_string($data[$field])) {
-                return $data[$field];
-            }
+        $data = $this->DecodeJson((string) $response['body'], 'Salesforce Aura login response');
+        $url = (string) ($data['events'][0]['attributes']['values']['url'] ?? '');
+        if ($url === '') {
+            throw new RuntimeException('Salesforce Aura login did not return a redirect URL');
         }
 
-        throw new RuntimeException('Salesforce login did not return an OAuth redirect');
+        return $url;
     }
 
-    private function ParseTokenUrl(string $tokenSource): void
+    private function FetchOAuthTokens(string $url, string $cookieFile): void
+    {
+        $response = $this->HttpRequest('GET', $url, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            throw new RuntimeException('OAuth redirect returned HTTP ' . $response['status']);
+        }
+
+        $body = (string) $response['body'];
+        if ($this->ParseTokenUrl($body)) {
+            return;
+        }
+
+        if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', $body, $matches) === 0 || $matches[1] === []) {
+            throw new RuntimeException('OAuth redirect did not contain a token link');
+        }
+
+        $nextUrl = html_entity_decode($matches[1][0], ENT_QUOTES | ENT_HTML5);
+        if (str_contains($nextUrl, 'ProgressiveLogin')) {
+            $progressive = $this->HttpRequest('GET', $this->NormalizeAuthUrl($nextUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+            if ($progressive['status'] < 200 || $progressive['status'] >= 300) {
+                throw new RuntimeException('Progressive login returned HTTP ' . $progressive['status']);
+            }
+
+            if (preg_match_all('/href\s*=\s*["\'](.+?)["\']/', (string) $progressive['body'], $progressiveMatches) === 0 || $progressiveMatches[1] === []) {
+                throw new RuntimeException('Progressive login did not contain a token link');
+            }
+            $nextUrl = html_entity_decode($progressiveMatches[1][0], ENT_QUOTES | ENT_HTML5);
+        }
+
+        $tokenResponse = $this->HttpRequest('GET', $this->NormalizeAuthUrl($nextUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        if ($tokenResponse['status'] < 200 || $tokenResponse['status'] >= 300) {
+            throw new RuntimeException('OAuth token page returned HTTP ' . $tokenResponse['status']);
+        }
+
+        if (!$this->ParseTokenUrl((string) $tokenResponse['body'])) {
+            throw new RuntimeException('OAuth token page did not contain all required tokens');
+        }
+    }
+
+    private function ParseTokenUrl(string $tokenSource): bool
     {
         if (preg_match('/oauth\/done#([^"\']+)/', $tokenSource, $matches) === 1) {
             $tokenSource = $matches[1];
@@ -291,7 +360,7 @@ class HaierhOnAccount extends IPSModuleStrict
         parse_str(str_replace('&amp;', '&', $tokenSource), $tokens);
         $idToken = (string) ($tokens['id_token'] ?? '');
         if ($idToken === '') {
-            throw new RuntimeException('OAuth response did not contain an id token');
+            return false;
         }
 
         $this->WriteAttributeString('AccessToken', (string) ($tokens['access_token'] ?? ''));
@@ -299,6 +368,7 @@ class HaierhOnAccount extends IPSModuleStrict
         if (isset($tokens['refresh_token'])) {
             $this->WriteAttributeString('RefreshToken', (string) $tokens['refresh_token']);
         }
+        return $this->ReadAttributeString('AccessToken') !== '' && $this->ReadAttributeString('RefreshToken') !== '';
     }
 
     private function LoginToApi(): bool
@@ -338,7 +408,7 @@ class HaierhOnAccount extends IPSModuleStrict
         return true;
     }
 
-    private function HttpRequest(string $method, string $url, array $headers = [], ?array $body = null, bool $followRedirects = true, string $cookieFile = ''): array
+    private function HttpRequest(string $method, string $url, array $headers = [], ?array $body = null, bool $followRedirects = true, string $cookieFile = '', string $rawBody = ''): array
     {
         if (!function_exists('curl_init')) {
             throw new RuntimeException('The PHP cURL extension is required for hOn HTTP requests');
@@ -372,7 +442,9 @@ class HaierhOnAccount extends IPSModuleStrict
             curl_setopt($curl, CURLOPT_COOKIEFILE, $cookieFile);
         }
 
-        if ($body !== null) {
+        if ($rawBody !== '') {
+            curl_setopt($curl, CURLOPT_POSTFIELDS, $rawBody);
+        } elseif ($body !== null) {
             $encoded = json_encode($body, JSON_UNESCAPED_SLASHES);
             if ($encoded === false) {
                 throw new RuntimeException('Could not encode HTTP body');
@@ -413,6 +485,47 @@ class HaierhOnAccount extends IPSModuleStrict
             throw new RuntimeException($label . ' did not contain valid JSON');
         }
         return $data;
+    }
+
+    private function BuildAuraFormBody(array $payload): string
+    {
+        $parts = [];
+        foreach ($payload as $key => $value) {
+            $encoded = json_encode($value, JSON_UNESCAPED_SLASHES);
+            if ($encoded === false) {
+                throw new RuntimeException('Could not encode Salesforce Aura payload');
+            }
+            $parts[] = rawurlencode((string) $key) . '=' . rawurlencode($encoded);
+        }
+        return implode('&', $parts);
+    }
+
+    private function ExtractStartUrl(string $pageUri): string
+    {
+        $parts = explode('startURL=', $pageUri, 2);
+        if (count($parts) !== 2) {
+            return '';
+        }
+
+        $startUrl = rawurldecode($parts[1]);
+        return explode('%3D', $startUrl, 2)[0];
+    }
+
+    private function MakeAuthRelativeUrl(string $url): string
+    {
+        $authBase = rtrim($this->ReadPropertyString('AuthBase'), '/');
+        if (str_starts_with($url, $authBase)) {
+            return substr($url, strlen($authBase));
+        }
+        return $url;
+    }
+
+    private function NormalizeAuthUrl(string $url): string
+    {
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+        return rtrim($this->ReadPropertyString('AuthBase'), '/') . '/' . ltrim($url, '/');
     }
 
     private function CreateNonce(): string
