@@ -144,6 +144,8 @@ class HaierhOnAccount extends IPSModuleStrict
                 array_filter($appliances, static fn ($appliance): bool => is_array($appliance))
             ));
 
+            $this->DebugAppliances($appliances);
+
             $json = json_encode($appliances, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             $this->WriteAttributeString('AppliancesJson', $json === false ? '[]' : $json);
             $this->SetStatus(102);
@@ -782,6 +784,38 @@ class HaierhOnAccount extends IPSModuleStrict
             throw new RuntimeException($label . ' did not contain valid JSON');
         }
         return $data;
+    }
+
+    private function DebugAppliances(array $appliances): void
+    {
+        $this->SendDebug('Appliances loaded', 'Count: ' . count($appliances), 0);
+        foreach ($appliances as $index => $appliance) {
+            if (!is_array($appliance)) {
+                continue;
+            }
+
+            $debugAppliance = $this->SanitizeDebugData($appliance);
+            $json = json_encode($debugAppliance, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $this->SendDebug('Appliance #' . ($index + 1), $json === false ? '[JSON encode failed]' : $json, 0);
+        }
+    }
+
+    private function SanitizeDebugData(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $result = [];
+            foreach ($value as $key => $item) {
+                $keyString = strtolower((string) $key);
+                if (str_contains($keyString, 'token') || str_contains($keyString, 'password') || str_contains($keyString, 'secret')) {
+                    $result[$key] = '[redacted]';
+                    continue;
+                }
+                $result[$key] = $this->SanitizeDebugData($item);
+            }
+            return $result;
+        }
+
+        return $value;
     }
 
     private function ExtractAuraContext(string $html): array
