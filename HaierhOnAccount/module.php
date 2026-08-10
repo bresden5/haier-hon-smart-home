@@ -217,7 +217,7 @@ class HaierhOnAccount extends IPSModuleStrict
             'nonce' => $this->CreateNonce()
         ];
         $url = $this->BuildUrl($this->ReadPropertyString('AuthBase'), '/services/oauth2/authorize/expid_Login', $query, false);
-        $response = $this->HttpRequest('GET', $url, ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $response = $this->SafeGet($url, $cookieFile);
         $body = (string) $response['body'];
 
         if (str_contains($body, 'oauth/done#access_token=')) {
@@ -248,7 +248,7 @@ class HaierhOnAccount extends IPSModuleStrict
 
     private function SubmitSalesforceLogin(string $loginUrl, string $cookieFile): string
     {
-        $page = $this->HttpRequest('GET', $this->NormalizeAuthUrl($loginUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $page = $this->SafeGet($loginUrl, $cookieFile);
         $body = (string) $page['body'];
 
         if (preg_match('/"fwuid":"(.*?)","loaded":(\{.*?\})/', $body, $context) !== 1) {
@@ -350,7 +350,7 @@ class HaierhOnAccount extends IPSModuleStrict
 
         $nextUrl = html_entity_decode($matches[1][0], ENT_QUOTES | ENT_HTML5);
         if (str_contains($nextUrl, 'ProgressiveLogin')) {
-            $progressive = $this->HttpRequest('GET', $this->NormalizeAuthUrl($nextUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+            $progressive = $this->SafeGet($nextUrl, $cookieFile);
             if ($progressive['status'] < 200 || $progressive['status'] >= 300) {
                 throw new RuntimeException('Progressive login returned HTTP ' . $progressive['status']);
             }
@@ -361,7 +361,7 @@ class HaierhOnAccount extends IPSModuleStrict
             $nextUrl = html_entity_decode($progressiveMatches[1][0], ENT_QUOTES | ENT_HTML5);
         }
 
-        $tokenResponse = $this->HttpRequest('GET', $this->NormalizeAuthUrl($nextUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, true, $cookieFile);
+        $tokenResponse = $this->SafeGet($nextUrl, $cookieFile);
         if ($tokenResponse['status'] < 200 || $tokenResponse['status'] >= 300) {
             throw new RuntimeException('OAuth token page returned HTTP ' . $tokenResponse['status']);
         }
@@ -484,6 +484,33 @@ class HaierhOnAccount extends IPSModuleStrict
         }
 
         return ['status' => $status, 'headers' => $responseHeaders, 'body' => $responseBody];
+    }
+
+    private function SafeGet(string $url, string $cookieFile): array
+    {
+        $currentUrl = $url;
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            if ($this->ParseTokenUrl($currentUrl)) {
+                return ['status' => 200, 'headers' => [], 'body' => $currentUrl];
+            }
+
+            if (!$this->IsHttpUrl($currentUrl) && !str_starts_with(trim($currentUrl), '/')) {
+                throw new RuntimeException('Redirect returned an unsupported URL scheme');
+            }
+
+            $response = $this->HttpRequest('GET', $this->NormalizeAuthUrl($currentUrl), ['user-agent: ' . $this->ReadPropertyString('UserAgent')], null, false, $cookieFile);
+            $location = (string) ($response['headers']['location'] ?? '');
+            if ($location === '') {
+                return $response;
+            }
+
+            if ($this->ParseTokenUrl($location)) {
+                return ['status' => 200, 'headers' => [], 'body' => $location];
+            }
+            $currentUrl = $location;
+        }
+
+        throw new RuntimeException('Too many redirects during hOn login');
     }
 
     private function BuildUrl(string $base, string $endpoint, array $query = [], bool $encodeValues = true): string
