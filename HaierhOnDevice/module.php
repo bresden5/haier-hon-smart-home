@@ -36,15 +36,21 @@ class HaierhOnDevice extends IPSModuleStrict
         $this->MaintainVariable('ProgramName', 'Program', VARIABLETYPE_STRING, '', 20, true);
         $this->MaintainVariable('ProgramPhase', 'Program phase', VARIABLETYPE_STRING, '', 30, true);
         $this->MaintainVariable('RemainingTime', 'Remaining time', VARIABLETYPE_INTEGER, '', 40, true);
+        $this->MaintainVariable('RemainingMainWashTime', 'Remaining main wash time', VARIABLETYPE_INTEGER, '', 45, true);
         $this->MaintainVariable('DoorStatus', 'Door status', VARIABLETYPE_STRING, '', 50, true);
         $this->MaintainVariable('DoorLockStatus', 'Door lock', VARIABLETYPE_STRING, '', 60, true);
         $this->MaintainVariable('RemoteControl', 'Remote control', VARIABLETYPE_BOOLEAN, '~Switch', 70, true);
+        $this->MaintainVariable('Paused', 'Paused', VARIABLETYPE_BOOLEAN, '~Switch', 75, true);
         $this->MaintainVariable('ErrorState', 'Errors', VARIABLETYPE_STRING, '', 80, true);
-        $this->MaintainVariable('CurrentWaterUsed', 'Current water used', VARIABLETYPE_FLOAT, '', 90, true);
-        $this->MaintainVariable('CurrentElectricityUsed', 'Current electricity used', VARIABLETYPE_FLOAT, '', 100, true);
-        $this->MaintainVariable('TotalWaterUsed', 'Total water used', VARIABLETYPE_FLOAT, '', 110, true);
-        $this->MaintainVariable('TotalElectricityUsed', 'Total electricity used', VARIABLETYPE_FLOAT, '', 120, true);
-        $this->MaintainVariable('TotalWashCycle', 'Total wash cycles', VARIABLETYPE_INTEGER, '', 130, true);
+        $this->MaintainVariable('Temperature', 'Temperature', VARIABLETYPE_INTEGER, '', 85, true);
+        $this->MaintainVariable('SpinSpeed', 'Spin speed', VARIABLETYPE_INTEGER, '', 90, true);
+        $this->MaintainVariable('CurrentWaterUsed', 'Current water used', VARIABLETYPE_FLOAT, '', 100, true);
+        $this->MaintainVariable('CurrentElectricityUsed', 'Current electricity used', VARIABLETYPE_FLOAT, '', 110, true);
+        $this->MaintainVariable('TotalWaterUsed', 'Total water used', VARIABLETYPE_FLOAT, '', 120, true);
+        $this->MaintainVariable('TotalElectricityUsed', 'Total electricity used', VARIABLETYPE_FLOAT, '', 130, true);
+        $this->MaintainVariable('CurrentWashCycle', 'Current wash cycle', VARIABLETYPE_INTEGER, '', 140, true);
+        $this->MaintainVariable('TotalWashCycle', 'Total wash cycles', VARIABLETYPE_INTEGER, '', 150, true);
+        $this->MaintainVariable('ConnectionStatus', 'Connection status', VARIABLETYPE_STRING, '', 160, true);
 
         $interval = $this->ReadPropertyInteger('PollInterval');
         $this->SetTimerInterval('RefreshState', $this->ReadPropertyString('MacAddress') === '' ? 0 : $interval * 1000);
@@ -290,20 +296,44 @@ class HaierhOnDevice extends IPSModuleStrict
     private function UpdateVariables(array $context): void
     {
         $flat = $this->Flatten($context);
+        $parameters = $this->ExtractShadowParameters($context);
 
-        $this->SetStringIfAvailable('MachineStatus', $flat, ['payload.attributes.machMode', 'attributes.machMode', 'machMode']);
-        $this->SetStringIfAvailable('ProgramName', $flat, ['payload.attributes.programName', 'attributes.programName', 'programName']);
-        $this->SetStringIfAvailable('ProgramPhase', $flat, ['payload.attributes.prPhase', 'attributes.prPhase', 'prPhase']);
-        $this->SetIntegerIfAvailable('RemainingTime', $flat, ['payload.attributes.remainingTimeMM', 'attributes.remainingTimeMM', 'remainingTimeMM']);
-        $this->SetStringIfAvailable('DoorStatus', $flat, ['payload.attributes.doorStatus', 'attributes.doorStatus', 'doorStatus']);
-        $this->SetStringIfAvailable('DoorLockStatus', $flat, ['payload.attributes.doorLockStatus', 'attributes.doorLockStatus', 'doorLockStatus']);
-        $this->SetStringIfAvailable('ErrorState', $flat, ['payload.attributes.errors', 'attributes.errors', 'errors']);
-        $this->SetBooleanIfAvailable('RemoteControl', $flat, ['payload.attributes.lastConnEvent.category', 'attributes.lastConnEvent.category', 'lastConnEvent.category']);
-        $this->SetFloatIfAvailable('CurrentWaterUsed', $flat, ['payload.attributes.currentWaterUsed', 'attributes.currentWaterUsed', 'currentWaterUsed']);
-        $this->SetFloatIfAvailable('CurrentElectricityUsed', $flat, ['payload.attributes.currentElectricityUsed', 'attributes.currentElectricityUsed', 'currentElectricityUsed']);
-        $this->SetFloatIfAvailable('TotalWaterUsed', $flat, ['payload.attributes.totalWaterUsed', 'attributes.totalWaterUsed', 'totalWaterUsed']);
-        $this->SetFloatIfAvailable('TotalElectricityUsed', $flat, ['payload.attributes.totalElectricityUsed', 'attributes.totalElectricityUsed', 'totalElectricityUsed']);
-        $this->SetIntegerIfAvailable('TotalWashCycle', $flat, ['payload.attributes.totalWashCycle', 'attributes.totalWashCycle', 'totalWashCycle']);
+        $this->SetStringIfAvailable('MachineStatus', $flat, ['payload.attributes.machMode', 'attributes.machMode', 'machMode'], $parameters['machMode'] ?? null);
+        $this->SetStringIfAvailable('ProgramName', $flat, ['payload.attributes.programName', 'attributes.programName', 'programName'], $parameters['programName'] ?? $parameters['prCode'] ?? null);
+        $this->SetStringIfAvailable('ProgramPhase', $flat, ['payload.attributes.prPhase', 'attributes.prPhase', 'prPhase'], $parameters['prPhase'] ?? null);
+        $this->SetIntegerIfAvailable('RemainingTime', $flat, ['payload.attributes.remainingTimeMM', 'attributes.remainingTimeMM', 'remainingTimeMM'], $parameters['remainingTimeMM'] ?? null);
+        $this->SetIntegerIfAvailable('RemainingMainWashTime', $flat, ['payload.attributes.remainingMainWashTime', 'attributes.remainingMainWashTime', 'remainingMainWashTime'], $parameters['remainingMainWashTime'] ?? null);
+        $this->SetStringIfAvailable('DoorStatus', $flat, ['payload.attributes.doorStatus', 'attributes.doorStatus', 'doorStatus'], $parameters['doorStatus'] ?? null);
+        $this->SetStringIfAvailable('DoorLockStatus', $flat, ['payload.attributes.doorLockStatus', 'attributes.doorLockStatus', 'doorLockStatus'], $parameters['doorLockStatus'] ?? null);
+        $this->SetStringIfAvailable('ErrorState', $flat, ['payload.attributes.errors', 'attributes.errors', 'errors'], $parameters['errors'] ?? null);
+        $this->SetBooleanIfAvailable('RemoteControl', $flat, ['payload.attributes.remoteCtrValid', 'attributes.remoteCtrValid', 'remoteCtrValid'], $parameters['remoteCtrValid'] ?? null);
+        $this->SetBooleanIfAvailable('Paused', $flat, ['payload.attributes.pause', 'attributes.pause', 'pause'], $parameters['pause'] ?? null);
+        $this->SetIntegerIfAvailable('Temperature', $flat, ['payload.attributes.temp', 'attributes.temp', 'temp'], $parameters['temp'] ?? null);
+        $this->SetIntegerIfAvailable('SpinSpeed', $flat, ['payload.attributes.spinSpeed', 'attributes.spinSpeed', 'spinSpeed'], $parameters['spinSpeed'] ?? null);
+        $this->SetFloatIfAvailable('CurrentWaterUsed', $flat, ['payload.attributes.currentWaterUsed', 'attributes.currentWaterUsed', 'currentWaterUsed'], $parameters['currentWaterUsed'] ?? null);
+        $this->SetFloatIfAvailable('CurrentElectricityUsed', $flat, ['payload.attributes.currentElectricityUsed', 'attributes.currentElectricityUsed', 'currentElectricityUsed'], $parameters['currentElectricityUsed'] ?? null);
+        $this->SetFloatIfAvailable('TotalWaterUsed', $flat, ['payload.attributes.totalWaterUsed', 'attributes.totalWaterUsed', 'totalWaterUsed'], $parameters['totalWaterUsed'] ?? null);
+        $this->SetFloatIfAvailable('TotalElectricityUsed', $flat, ['payload.attributes.totalElectricityUsed', 'attributes.totalElectricityUsed', 'totalElectricityUsed'], $parameters['totalElectricityUsed'] ?? null);
+        $this->SetIntegerIfAvailable('CurrentWashCycle', $flat, ['payload.attributes.currentWashCycle', 'attributes.currentWashCycle', 'currentWashCycle'], $parameters['currentWashCycle'] ?? null);
+        $this->SetIntegerIfAvailable('TotalWashCycle', $flat, ['payload.attributes.totalWashCycle', 'attributes.totalWashCycle', 'totalWashCycle'], $parameters['totalWashCycle'] ?? null);
+        $this->SetStringIfAvailable('ConnectionStatus', $flat, ['payload.lastConnEvent.category', 'lastConnEvent.category']);
+    }
+
+    private function ExtractShadowParameters(array $context): array
+    {
+        $parameters = $context['payload']['shadow']['parameters'] ?? [];
+        if (!is_array($parameters)) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($parameters as $name => $parameter) {
+            if (is_array($parameter) && array_key_exists('parNewVal', $parameter)) {
+                $values[(string) $name] = $parameter['parNewVal'];
+            }
+        }
+
+        return $values;
     }
 
     private function Flatten(array $data, string $prefix = ''): array
@@ -330,33 +360,33 @@ class HaierhOnDevice extends IPSModuleStrict
         return null;
     }
 
-    private function SetStringIfAvailable(string $ident, array $flat, array $paths): void
+    private function SetStringIfAvailable(string $ident, array $flat, array $paths, mixed $fallback = null): void
     {
-        $value = $this->FindValue($flat, $paths);
+        $value = $fallback ?? $this->FindValue($flat, $paths);
         if ($value !== null) {
             $this->SetValue($ident, is_scalar($value) ? (string) $value : json_encode($value));
         }
     }
 
-    private function SetIntegerIfAvailable(string $ident, array $flat, array $paths): void
+    private function SetIntegerIfAvailable(string $ident, array $flat, array $paths, mixed $fallback = null): void
     {
-        $value = $this->FindValue($flat, $paths);
+        $value = $fallback ?? $this->FindValue($flat, $paths);
         if ($value !== null && is_numeric($value)) {
             $this->SetValue($ident, (int) $value);
         }
     }
 
-    private function SetFloatIfAvailable(string $ident, array $flat, array $paths): void
+    private function SetFloatIfAvailable(string $ident, array $flat, array $paths, mixed $fallback = null): void
     {
-        $value = $this->FindValue($flat, $paths);
+        $value = $fallback ?? $this->FindValue($flat, $paths);
         if ($value !== null && is_numeric($value)) {
             $this->SetValue($ident, (float) $value);
         }
     }
 
-    private function SetBooleanIfAvailable(string $ident, array $flat, array $paths): void
+    private function SetBooleanIfAvailable(string $ident, array $flat, array $paths, mixed $fallback = null): void
     {
-        $value = $this->FindValue($flat, $paths);
+        $value = $fallback ?? $this->FindValue($flat, $paths);
         if ($value !== null) {
             $this->SetValue($ident, in_array(strtolower((string) $value), ['1', 'true', 'mobileapp', 'connected', 'online', 'remote'], true));
         }
