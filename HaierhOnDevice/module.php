@@ -219,17 +219,17 @@ class HaierhOnDevice extends IPSModuleStrict
             'firmwareId' => $this->ReadPropertyString('FirmwareId'),
             'fwVersion' => $this->ReadPropertyString('FwVersion'),
             'series' => $this->ReadPropertyString('Series')
-        ], static fn (string $value): bool => $value !== '');
+        ], static fn ($value): bool => (string) $value !== '');
     }
 
     private function GetApplianceTypeId(): string
     {
         $type = $this->ReadPropertyString('ApplianceType');
         if (is_numeric($type)) {
-            return $type;
+            return (string) $type;
         }
 
-        return array_flip($this->GetApplianceTypeMap())[strtoupper($type)] ?? $type;
+        return (string) (array_flip($this->GetApplianceTypeMap())[strtoupper($type)] ?? $type);
     }
 
     private function GetApplianceTypeName(): string
@@ -239,7 +239,7 @@ class HaierhOnDevice extends IPSModuleStrict
             return strtoupper($type);
         }
 
-        return $this->GetApplianceTypeMap()[$type] ?? $type;
+        return (string) ($this->GetApplianceTypeMap()[$type] ?? $type);
     }
 
     private function GetApplianceTypeMap(): array
