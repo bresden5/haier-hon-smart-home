@@ -233,7 +233,12 @@ class HaierhOnAccount extends IPSModuleStrict
                     return $finalUrl;
                 }
 
-                throw new RuntimeException('Could not find hOn login URL in authorize response from ' . $this->DescribeUrl($finalUrl !== '' ? $finalUrl : $url));
+                throw new RuntimeException(
+                    'Could not find hOn login URL in authorize response from '
+                    . $this->DescribeUrl($finalUrl !== '' ? $finalUrl : $url)
+                    . '; '
+                    . $this->DescribeHtmlForDebug($body)
+                );
             }
         }
 
@@ -608,6 +613,44 @@ class HaierhOnAccount extends IPSModuleStrict
         $host = (string) ($parts['host'] ?? 'no-host');
         $path = (string) ($parts['path'] ?? '');
         return $scheme . '://' . $host . $path;
+    }
+
+    private function DescribeHtmlForDebug(string $html): string
+    {
+        $hints = [];
+        if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $matches) === 1) {
+            $hints[] = 'title=' . $this->SanitizeDebugText($matches[1]);
+        }
+
+        if (preg_match_all('/<form[^>]+action=["\']([^"\']+)["\']/i', $html, $matches) > 0) {
+            $hints[] = 'formActions=' . implode(',', array_map(fn (string $value): string => $this->DescribeUrl($this->NormalizeAuthUrl($value)), array_slice($matches[1], 0, 3)));
+        }
+
+        if (preg_match_all('/href=["\']([^"\']+)["\']/i', $html, $matches) > 0) {
+            $links = [];
+            foreach (array_slice($matches[1], 0, 5) as $value) {
+                $links[] = $this->SanitizeDebugText($value, 80);
+            }
+            $hints[] = 'hrefs=' . implode(',', $links);
+        }
+
+        foreach (['hOnRedirect', 'oauth/done', 'RemoteAccessAuthorizationPage', 'login', 'error', 'captcha'] as $needle) {
+            if (stripos($html, $needle) !== false) {
+                $hints[] = 'contains=' . $needle;
+            }
+        }
+
+        return $hints === [] ? 'no safe HTML hints found' : implode('; ', $hints);
+    }
+
+    private function SanitizeDebugText(string $text, int $maxLength = 120): string
+    {
+        $text = trim(preg_replace('/\s+/', ' ', strip_tags(html_entity_decode($text, ENT_QUOTES | ENT_HTML5))) ?? '');
+        $text = preg_replace('/([?&#](?:access_token|refresh_token|id_token|password|username|email)=)[^&#\s]+/i', '$1[redacted]', $text) ?? $text;
+        if (strlen($text) > $maxLength) {
+            return substr($text, 0, $maxLength) . '...';
+        }
+        return $text;
     }
 
     private function IsHttpUrl(string $url): bool
